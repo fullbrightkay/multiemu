@@ -54,7 +54,7 @@ impl Default for Chip8ProcessorRegisters {
 
 #[derive(Debug)]
 pub struct Chip8ProcessorConfig {
-    pub frequency: Ratio<u32>,
+    pub frequency: Ratio<u64>,
     pub kind: Chip8Kind,
     pub display: ComponentId,
     pub audio: ComponentId,
@@ -181,7 +181,7 @@ impl FromConfig for Chip8Processor {
 impl InputComponent for Chip8Processor {}
 
 impl SchedulableComponent for Chip8Processor {
-    fn run(&self, period: u32) {
+    fn run(&self, period: u64) {
         let mut state = self.state.lock().unwrap();
 
         for _ in 0..period {

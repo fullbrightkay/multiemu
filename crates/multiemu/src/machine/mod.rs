@@ -19,9 +19,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+pub mod from_system;
+
 pub struct SchedulableComponentInfo {
     pub component: Arc<dyn SchedulableComponent>,
-    pub timings: Ratio<u32>,
+    pub timings: Ratio<u64>,
     pub run_after: HashSet<ComponentId>,
     pub run_before: HashSet<ComponentId>,
 }
@@ -193,7 +195,7 @@ impl<C: Component> ComponentBuilder<C> {
 
     pub fn set_schedulable(
         &mut self,
-        timings: Ratio<u32>,
+        timings: Ratio<u64>,
         run_after: impl IntoIterator<Item = ComponentId>,
         run_before: impl IntoIterator<Item = ComponentId>,
     ) -> &mut Self

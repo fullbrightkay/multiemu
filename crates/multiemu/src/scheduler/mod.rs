@@ -14,12 +14,12 @@ use std::{
 pub mod framerate_tracker;
 
 pub struct Scheduler {
-    current_tick: u32,
-    rollover_tick: u32,
-    tick_real_time: Ratio<u32>,
+    current_tick: u64,
+    rollover_tick: u64,
+    tick_real_time: Ratio<u64>,
     framerate_tracker: FramerateTracker,
     // Stores precomputed periods for each component
-    schedule: RangeMap<u32, Vec<ComponentId>>,
+    schedule: RangeMap<u64, Vec<ComponentId>>,
 }
 
 impl Scheduler {
@@ -82,7 +82,7 @@ impl Scheduler {
                 })
                 .sorted_by_key(|(_, run_indication, _)| *run_indication)
                 .collect();
-            
+
             if to_run.len() == 1 {
                 let (component_id, _, tick_rate) = to_run[0];
                 let time_slice = tick_rate;
@@ -136,8 +136,9 @@ impl Scheduler {
         let tick_real_time = Ratio::new(common_multiple, common_denominator).recip();
 
         tracing::info!(
-            "Schedule ticks take {} seconds",
-            tick_real_time.to_f32().unwrap()
+            "Schedule ticks take {:?} and restarts at tick {}",
+            Duration::from_secs_f64(tick_real_time.to_f64().unwrap()),
+            common_denominator
         );
 
         Self {
@@ -173,13 +174,17 @@ impl Scheduler {
                         .get(component_id)
                         .and_then(|table| table.as_schedulable.as_ref())
                     {
-                        component_info.component.run(time_slice.len() as u32);
+                        component_info
+                            .component
+                            .run(time_slice.clone().count() as u64);
                     } else {
                         panic!("Schedule referencing non existant component");
                     }
                 }
 
-                self.current_tick = self.current_tick.saturating_add(time_slice.len() as u32);
+                self.current_tick = self
+                    .current_tick
+                    .saturating_add(time_slice.clone().count() as u64);
             } else {
                 self.current_tick = self.current_tick.saturating_add(1);
             }

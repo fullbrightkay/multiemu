@@ -2,17 +2,14 @@ use crate::{
     component::{memory::MemoryComponent, Component, FromConfig},
     machine::ComponentBuilder,
     memory::{PreviewMemoryRecord, ReadMemoryRecord, WriteMemoryRecord, VALID_ACCESS_SIZES},
-    rom::{
-        id::RomId,
-        manager::{RomManager, RomRequirement},
-    },
+    rom::{id::RomId, manager::RomRequirement},
 };
 use rangemap::RangeMap;
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
     ops::Range,
-    sync::{Arc, Mutex},
+    sync::Mutex,
 };
 
 #[derive(Debug)]
@@ -37,17 +34,11 @@ impl Default for RomMemoryConfig {
 pub struct RomMemory {
     config: RomMemoryConfig,
     rom: Mutex<File>,
-    rom_manager: Arc<RomManager>,
 }
 
 impl Component for RomMemory {
     fn reset(&self) {
-        let rom_file = self
-            .rom_manager
-            .open(self.config.rom, RomRequirement::Required)
-            .unwrap();
-
-        *self.rom.lock().unwrap() = rom_file;
+        // This is basically a stateless component so there isn't any need to reset
     }
 }
 
@@ -64,7 +55,6 @@ impl FromConfig for RomMemory {
         component_builder.set_component(Self {
             config,
             rom: Mutex::new(rom_file),
-            rom_manager,
         });
     }
 }
@@ -88,10 +78,14 @@ impl MemoryComponent for RomMemory {
             errors.insert(affected_range.clone(), ReadMemoryRecord::Denied);
         }
 
-        let address = address - self.config.assigned_range.start;
+        let adjusted_offset = address - self.config.assigned_range.start;
         let mut rom_guard = self.rom.lock().unwrap();
 
-        rom_guard.seek(SeekFrom::Start(address as u64)).unwrap();
+        // FIXME: this is very inefficient, we need a cacher so we can skip syscalls for every operation
+        // Also maybe put open roms into thread locals
+        rom_guard
+            .seek(SeekFrom::Start(adjusted_offset as u64))
+            .unwrap();
         rom_guard.read_exact(buffer).unwrap();
     }
 
@@ -102,7 +96,7 @@ impl MemoryComponent for RomMemory {
         errors: &mut RangeMap<usize, WriteMemoryRecord>,
     ) {
         debug_assert!(
-            VALID_ACCESS_SIZES.contains(&(buffer.len())),
+            VALID_ACCESS_SIZES.contains(&buffer.len()),
             "Invalid memory access size {}",
             buffer.len()
         );
@@ -115,11 +109,12 @@ impl MemoryComponent for RomMemory {
         buffer: &mut [u8],
         _errors: &mut RangeMap<usize, PreviewMemoryRecord>,
     ) {
-        let address = address - self.config.assigned_range.start;
-
+        let adjusted_offset = address - self.config.assigned_range.start;
         let mut rom_guard = self.rom.lock().unwrap();
 
-        rom_guard.seek(SeekFrom::Start(address as u64)).unwrap();
+        rom_guard
+            .seek(SeekFrom::Start(adjusted_offset as u64))
+            .unwrap();
         rom_guard.read_exact(buffer).unwrap();
     }
 }

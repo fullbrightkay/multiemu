@@ -1,5 +1,5 @@
 use crate::{
-    definitions::chip8::display::Chip8DisplayImplementation,
+    definitions::chip8::display::{draw_sprite_common, Chip8DisplayImplementation},
     runtime::rendering_backend::DisplayComponentFramebuffer,
 };
 use bitvec::{prelude::Msb0, view::BitView};
@@ -28,34 +28,9 @@ pub struct VulkanState {
 impl Chip8DisplayImplementation for VulkanState {
     fn draw_sprite(&self, position: Point2<u8>, sprite: &[u8]) -> bool {
         let mut staging_buffer = self.staging_buffer.write().unwrap();
-        let mut staging_buffer = DMatrixViewMut::from_slice(staging_buffer.deref_mut(), 64, 32);
+        let staging_buffer = DMatrixViewMut::from_slice(staging_buffer.deref_mut(), 64, 32);
 
-        let mut collided = false;
-
-        for (y, sprite_row) in sprite.view_bits::<Msb0>().chunks(8).enumerate() {
-            for (x, sprite_pixel) in sprite_row.iter().enumerate() {
-                let x = position.x as usize + x;
-                let y = position.y as usize + y;
-
-                if x >= 64 || y >= 32 {
-                    continue;
-                }
-
-                let old_sprite_pixel = staging_buffer[(x, y)] == Srgba::new(255, 255, 255, 255);
-
-                if *sprite_pixel && old_sprite_pixel {
-                    collided = true;
-                }
-
-                staging_buffer[(x, y)] = if *sprite_pixel ^ old_sprite_pixel {
-                    Srgba::new(255, 255, 255, 255)
-                } else {
-                    Srgba::new(0, 0, 0, 255)
-                };
-            }
-        }
-
-        collided
+        draw_sprite_common(position, sprite, staging_buffer)
     }
 
     fn clear_display(&self) {
@@ -73,7 +48,7 @@ impl Chip8DisplayImplementation for VulkanState {
         staging_buffer.copy_from_slice(buffer.as_slice());
     }
 
-    fn get_framebuffer(& self) -> DisplayComponentFramebuffer {
+    fn get_framebuffer(&self) -> DisplayComponentFramebuffer {
         DisplayComponentFramebuffer::Vulkan(self.render_image.clone())
     }
 

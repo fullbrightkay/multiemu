@@ -37,7 +37,7 @@ impl FromConfig for Chip8Timer {
 }
 
 impl SchedulableComponent for Chip8Timer {
-    fn run(&self, period: u32) {
+    fn run(&self, period: u64) {
         let mut delay_timer_guard = self.delay_timer.lock().unwrap();
 
         *delay_timer_guard = delay_timer_guard.saturating_sub(period.try_into().unwrap_or(u8::MAX));

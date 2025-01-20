@@ -77,7 +77,8 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> ApplicationHandl
                     })
                     .expect("Could not figure out system");
 
-                let machine = chip8_machine(user_specified_roms, self.rom_manager.clone());
+                let machine =
+                    Machine::from_system(user_specified_roms, self.rom_manager.clone(), system);
                 runtime_state.initialize_machine(&machine);
 
                 self.menu.active = false;

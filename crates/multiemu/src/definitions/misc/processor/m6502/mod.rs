@@ -63,7 +63,7 @@ pub struct M6502Registers {
 
 #[derive(Debug)]
 pub struct M6502Config {
-    pub frequency: Ratio<u32>,
+    pub frequency: Ratio<u64>,
 }
 
 pub struct M6502 {
@@ -562,11 +562,11 @@ impl ProcessorComponent for M6502 {
 }
 
 impl SchedulableComponent for M6502 {
-    fn tick_rate(&self) -> Ratio<u32> {
+    fn tick_rate(&self) -> Ratio<u64> {
         todo!()
     }
 
-    fn run(&mut self, period: u32) {
+    fn run(&mut self, period: u64) {
         todo!()
     }
 }

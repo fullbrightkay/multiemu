@@ -9,6 +9,7 @@ use crate::{
 };
 use rand::{thread_rng, RngCore};
 use rangemap::RangeMap;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
@@ -74,7 +75,7 @@ pub struct StandardMemory {
 
 impl Component for StandardMemory {
     fn reset(&self) {
-        todo!()
+        self.initialize_buffer();
     }
 
     fn save_snapshot(&self) -> rmpv::Value {
@@ -119,87 +120,22 @@ impl FromConfig for StandardMemory {
         let rom_manager = component_builder.machine().rom_manager();
         let buffer_size = config.assigned_range.len();
         let chunks_needed = buffer_size.div_ceil(CHUNK_SIZE);
-        let mut buffer = Vec::from_iter(std::iter::repeat([0; CHUNK_SIZE]).take(chunks_needed));
-
-        // HACK: This overfills the buffer for ease of programming, but its ok because the actual mmu doesn't allow accesses out at runtime
-        match &config.initial_contents {
-            StandardMemoryInitialContents::Value { value } => {
-                for chunk in buffer.iter_mut() {
-                    chunk.fill(*value);
-                }
-            }
-            StandardMemoryInitialContents::Random => {
-                for chunk in buffer.iter_mut() {
-                    thread_rng().fill_bytes(chunk);
-                }
-            }
-            StandardMemoryInitialContents::Array { value, offset } => {
-                // Adjust the offset relatively to the local buffer
-                let adjusted_offset = offset - config.assigned_range.start;
-                // Get the start chunk
-                let start_chunk = adjusted_offset / CHUNK_SIZE;
-                let end_chunk = (adjusted_offset + value.len()).min(buffer_size) / CHUNK_SIZE;
-
-                // Shut up
-                #[allow(clippy::needless_range_loop)]
-                for chunk_index in start_chunk..end_chunk {
-                    let chunk_start = if chunk_index == start_chunk {
-                        adjusted_offset % CHUNK_SIZE
-                    } else {
-                        0
-                    };
-
-                    let chunk_end = if chunk_index == end_chunk {
-                        (adjusted_offset + value.len()) % CHUNK_SIZE
-                    } else {
-                        CHUNK_SIZE
-                    };
-                    let chunk = &mut buffer[chunk_index];
-
-                    let copy_start = chunk_index * CHUNK_SIZE;
-                    let copy_end = (chunk_index + 1) * CHUNK_SIZE;
-
-                    let value_start = copy_start - adjusted_offset;
-                    let value_end = (copy_end - adjusted_offset).min(value.len());
-
-                    chunk[chunk_start..chunk_end].copy_from_slice(&value[value_start..value_end]);
-                }
-            }
-            StandardMemoryInitialContents::Rom { rom_id, offset } => {
-                let mut rom_file = rom_manager.open(*rom_id, RomRequirement::Required).unwrap();
-
-                let adjusted_offset = offset - config.assigned_range.start;
-                let mut rom_index = adjusted_offset;
-
-                for chunk in buffer.iter_mut() {
-                    let chunk_start = rom_index % CHUNK_SIZE;
-                    let chunk_end = (rom_index + CHUNK_SIZE).min(buffer_size);
-
-                    let read_len = chunk_end - rom_index;
-                    let mut temp_buffer = vec![0; read_len];
-                    let bytes_read = rom_file.read(&mut temp_buffer).unwrap();
-                    if bytes_read == 0 {
-                        break;
-                    }
-                    chunk[chunk_start..chunk_start + bytes_read]
-                        .copy_from_slice(&temp_buffer[..bytes_read]);
-
-                    rom_index += bytes_read;
-                    if rom_index >= buffer_size {
-                        break;
-                    }
-                }
-            }
-        }
-
+        let buffer = Vec::from_iter(
+            std::iter::repeat([0; CHUNK_SIZE])
+                .take(chunks_needed)
+                .map(Mutex::new),
+        );
         let assigned_range = config.assigned_range.clone();
 
+        let me = Self {
+            config,
+            buffer: buffer.into_iter().collect(),
+            rom_manager,
+        };
+        me.initialize_buffer();
+
         component_builder
-            .set_component(Self {
-                config,
-                buffer: buffer.into_iter().map(Mutex::new).collect(),
-                rom_manager,
-            })
+            .set_component(me)
             .set_memory([assigned_range]);
     }
 }
@@ -344,6 +280,88 @@ impl MemoryComponent for StandardMemory {
 
             if buffer_offset >= buffer.len() {
                 break;
+            }
+        }
+    }
+}
+
+impl StandardMemory {
+    fn initialize_buffer(&self) {
+        let buffer_size = self.config.assigned_range.len();
+
+        // HACK: This overfills the buffer for ease of programming, but its ok because the actual mmu doesn't allow accesses out at runtime
+        match &self.config.initial_contents {
+            StandardMemoryInitialContents::Value { value } => {
+                self.buffer
+                    .par_iter()
+                    .for_each(|chunk| chunk.lock().unwrap().fill(*value));
+            }
+            StandardMemoryInitialContents::Random => {
+                self.buffer.par_iter().for_each(|chunk| {
+                    thread_rng().fill_bytes(chunk.lock().unwrap().as_mut_slice())
+                });
+            }
+            StandardMemoryInitialContents::Array { value, offset } => {
+                // Adjust the offset relatively to the local buffer
+                let adjusted_offset = offset - self.config.assigned_range.start;
+                // Get the start chunk
+                let start_chunk = adjusted_offset / CHUNK_SIZE;
+                let end_chunk = (adjusted_offset + value.len()).min(buffer_size) / CHUNK_SIZE;
+
+                // Shut up
+                #[allow(clippy::needless_range_loop)]
+                for chunk_index in start_chunk..end_chunk {
+                    let chunk_start = if chunk_index == start_chunk {
+                        adjusted_offset % CHUNK_SIZE
+                    } else {
+                        0
+                    };
+
+                    let chunk_end = if chunk_index == end_chunk {
+                        (adjusted_offset + value.len()) % CHUNK_SIZE
+                    } else {
+                        CHUNK_SIZE
+                    };
+
+                    let copy_start = chunk_index * CHUNK_SIZE;
+                    let copy_end = (chunk_index + 1) * CHUNK_SIZE;
+
+                    let value_start = copy_start - adjusted_offset;
+                    let value_end = (copy_end - adjusted_offset).min(value.len());
+
+                    let chunk = &self.buffer[chunk_index];
+                    chunk.lock().unwrap()[chunk_start..chunk_end]
+                        .copy_from_slice(&value[value_start..value_end]);
+                }
+            }
+            StandardMemoryInitialContents::Rom { rom_id, offset } => {
+                let mut rom_file = self
+                    .rom_manager
+                    .open(*rom_id, RomRequirement::Required)
+                    .unwrap();
+
+                let adjusted_offset = offset - self.config.assigned_range.start;
+                let mut rom_index = adjusted_offset;
+
+                for chunk in self.buffer.iter() {
+                    let chunk_start = rom_index % CHUNK_SIZE;
+                    let chunk_end = (rom_index + CHUNK_SIZE).min(buffer_size);
+
+                    let read_len = chunk_end - rom_index;
+                    let mut temp_buffer = vec![0; read_len];
+                    let bytes_read = rom_file.read(&mut temp_buffer).unwrap();
+                    if bytes_read == 0 {
+                        break;
+                    }
+
+                    chunk.lock().unwrap()[chunk_start..chunk_start + bytes_read]
+                        .copy_from_slice(&temp_buffer[..bytes_read]);
+
+                    rom_index += bytes_read;
+                    if rom_index >= buffer_size {
+                        break;
+                    }
+                }
             }
         }
     }

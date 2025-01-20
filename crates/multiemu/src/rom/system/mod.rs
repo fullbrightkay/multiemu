@@ -74,7 +74,6 @@ pub enum SonySystem {
 )]
 pub enum OtherSystem {
     Chip8,
-    SuperChip8,
 }
 
 #[derive(
@@ -145,7 +144,6 @@ impl Display for GameSystem {
             GameSystem::Sega(SegaSystem::SegaCD) => write!(f, "Sega - Sega CD"),
             GameSystem::Sega(SegaSystem::Sega32X) => write!(f, "Sega - Sega 32X"),
             GameSystem::Other(OtherSystem::Chip8) => write!(f, "Other - Chip8"),
-            GameSystem::Other(OtherSystem::SuperChip8) => write!(f, "Other - Super Chip8"),
             GameSystem::Atari(AtariSystem::Atari2600) => write!(f, "Atari - 2600"),
             GameSystem::Atari(AtariSystem::Atari5200) => write!(f, "Atari - 5200"),
             GameSystem::Atari(AtariSystem::Atari7800) => write!(f, "Atari - 7800"),

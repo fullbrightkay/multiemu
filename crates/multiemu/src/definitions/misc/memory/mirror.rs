@@ -1,9 +1,7 @@
 use crate::{
-    component::{
-        memory::{MemoryComponent, PreviewMemoryRecord, ReadMemoryRecord, WriteMemoryRecord},
-        Component, FromConfig,
-    },
+    component::{memory::MemoryComponent, Component, FromConfig},
     machine::ComponentBuilder,
+    memory::{PreviewMemoryRecord, ReadMemoryRecord, WriteMemoryRecord, VALID_ACCESS_SIZES},
     rom::manager::RomManager,
 };
 use arrayvec::ArrayVec;
@@ -29,7 +27,6 @@ pub struct MirrorMemoryConfig {
 
 pub struct MirrorMemory {
     config: MirrorMemoryConfig,
-    rom_manager: Arc<RomManager>,
 }
 
 impl Component for MirrorMemory {}
@@ -38,25 +35,22 @@ impl FromConfig for MirrorMemory {
     type Config = MirrorMemoryConfig;
 
     fn from_config(component_builder: &mut ComponentBuilder<Self>, config: Self::Config) {
-        component_builder.set_component(Self {
-            config,
-            rom_manager: component_builder.machine().rom_manager(),
-        });
+        component_builder.set_component(Self { config });
     }
 }
 
 impl MemoryComponent for MirrorMemory {
-    fn assigned_memory_range(&self) -> Range<usize> {
-        self.config.assigned_range.clone()
-    }
-
     fn read_memory(
         &self,
         address: usize,
         buffer: &mut [u8],
         errors: &mut RangeMap<usize, ReadMemoryRecord>,
     ) {
-        debug_assert!([1, 2, 4, 8].contains(&buffer.len()));
+        debug_assert!(
+            VALID_ACCESS_SIZES.contains(&buffer.len()),
+            "Invalid memory access size {}",
+            buffer.len()
+        );
 
         let affected_range = address..address + buffer.len();
 
@@ -64,7 +58,7 @@ impl MemoryComponent for MirrorMemory {
             errors.insert(affected_range, ReadMemoryRecord::Denied);
         }
 
-        let assigned_range_size = self.config.assigned_range.clone().count();
+        let assigned_range_size = self.config.assigned_range.len();
         let target_range_size = self.config.target.clone().count();
 
         let offset = (address - self.config.assigned_range.start) + self.config.target.start;
@@ -72,14 +66,11 @@ impl MemoryComponent for MirrorMemory {
         if assigned_range_size > target_range_size && offset >= self.config.target.end {
             match self.config.overflow_mode {
                 MirrorMemoryOverflowMode::Deny => {
-                    records.push((affected_range.clone(), ReadMemoryRecord::Denied));
-                    return (self.config.read_cycle_penalty_calculator)(affected_range, true);
+                    errors.insert(affected_range.clone(), ReadMemoryRecord::Denied);
                 }
                 MirrorMemoryOverflowMode::Wrap(n) => {
                     if offset / target_range_size >= n {
-                        records.push((affected_range.clone(), ReadMemoryRecord::Denied));
-
-                        return (self.config.read_cycle_penalty_calculator)(affected_range, true);
+                        errors.push((affected_range.clone(), ReadMemoryRecord::Denied));
                     }
 
                     let real_offset = offset % target_range_size;
@@ -101,16 +92,19 @@ impl MemoryComponent for MirrorMemory {
             ReadMemoryRecord::Redirect { offset },
         ));
 
-        (self.config.read_cycle_penalty_calculator)(affected_range, false)
     }
 
     fn write_memory(
-        &mut self,
+        &self,
         address: usize,
         buffer: &[u8],
-        records: &mut ArrayVec<(Range<usize>, WriteMemoryRecord), 8>,
-    ) -> u64 {
-        debug_assert!([1, 2, 4, 8].contains(&buffer.len()));
+        errors: &mut RangeMap<usize, WriteMemoryRecord>,
+    ) {
+        debug_assert!(
+            VALID_ACCESS_SIZES.contains(&buffer.len()),
+            "Invalid memory access size {}",
+            buffer.len()
+        );
 
         let affected_range = address..address + buffer.len();
 
@@ -157,8 +151,6 @@ impl MemoryComponent for MirrorMemory {
             affected_range.clone(),
             WriteMemoryRecord::Redirect { offset },
         ));
-
-        (self.config.write_cycle_penalty_calculator)(affected_range, false)
     }
 
     fn preview_memory(

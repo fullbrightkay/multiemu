@@ -32,7 +32,7 @@ impl FromConfig for Chip8Audio {
 }
 
 impl SchedulableComponent for Chip8Audio {
-    fn run(&self, period: u32) {
+    fn run(&self, period: u64) {
         let mut sound_timer_guard = self.sound_timer.lock().unwrap();
         *sound_timer_guard = sound_timer_guard.saturating_sub(period.try_into().unwrap_or(u8::MAX));
     }

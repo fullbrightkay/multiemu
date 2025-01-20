@@ -8,8 +8,8 @@ use crate::{
     machine::ComponentBuilder,
     runtime::rendering_backend::{DisplayComponentFramebuffer, DisplayComponentInitializationData},
 };
-use bitvec::ptr::Mut;
-use nalgebra::{DMatrix, Point2};
+use bitvec::{order::Msb0, ptr::Mut, view::BitView};
+use nalgebra::{DMatrix, DMatrixViewMut, Point2, Vector2};
 use num::rational::Ratio;
 use palette::Srgba;
 use serde::{Deserialize, Serialize};
@@ -141,7 +141,7 @@ trait Chip8DisplayImplementation {
 }
 
 impl SchedulableComponent for Chip8Display {
-    fn run(&self, _period: u32) {
+    fn run(&self, _period: u64) {
         // Only update it once
 
         match self.state.get() {
@@ -226,4 +226,38 @@ impl DisplayComponent for Chip8Display {
             _ => panic!("Internal state not initialized"),
         }
     }
+}
+
+fn draw_sprite_common(
+    position: Point2<u8>,
+    sprite: &[u8],
+    mut framebuffer: DMatrixViewMut<'_, Srgba<u8>>,
+) -> bool {
+    let mut collided = false;
+    let position = position.cast();
+
+    for (y, sprite_row) in sprite.view_bits::<Msb0>().chunks(8).enumerate() {
+        for (x, sprite_pixel) in sprite_row.iter().enumerate() {
+            let coord = position + Vector2::new(x, y);
+
+            if coord.x >= 64 || coord.y >= 32 {
+                continue;
+            }
+
+            let old_sprite_pixel =
+                framebuffer[(coord.x, coord.y)] == Srgba::new(255, 255, 255, 255);
+
+            if *sprite_pixel && old_sprite_pixel {
+                collided = true;
+            }
+
+            framebuffer[(coord.x, coord.y)] = if *sprite_pixel ^ old_sprite_pixel {
+                Srgba::new(255, 255, 255, 255)
+            } else {
+                Srgba::new(0, 0, 0, 255)
+            };
+        }
+    }
+
+    collided
 }
