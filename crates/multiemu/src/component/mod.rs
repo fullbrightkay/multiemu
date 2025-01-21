@@ -12,7 +12,7 @@ pub mod memory;
 pub mod schedulable;
 
 // Basic supertrait for all components
-pub trait Component: Any + Send + Sync + DowncastSync + 'static {
+pub trait Component: Any + Send + Sync + DowncastSync {
     fn reset(&self) {}
     fn save_snapshot(&self) -> rmpv::Value {
         rmpv::Value::Nil

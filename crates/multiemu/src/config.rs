@@ -19,26 +19,41 @@ use std::{
     ops::Deref,
     path::PathBuf,
 };
+use strum::{Display, EnumIter};
 
-#[cfg(desktop)]
+#[cfg(platform_desktop)]
 pub static STORAGE_DIRECTORY: LazyLock<PathBuf> =
     LazyLock::new(|| dirs::data_dir().unwrap().join("multiemu"));
-#[cfg(nintendo_3ds)]
+#[cfg(platform_3ds)]
 pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from("sdmc:/multiemu"));
 
 pub static CONFIG_LOCATION: LazyLock<PathBuf> =
     LazyLock::new(|| STORAGE_DIRECTORY.join("config.ron"));
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, EnumIter, Display, PartialEq, Eq)]
+pub enum GraphicsSettings {
+    Software,
+    #[cfg(graphics_vulkan)]
+    Vulkan,
+}
+
+impl Default for GraphicsSettings {
+    fn default() -> Self {
+        #[cfg(platform_desktop)]
+        GraphicsSettings::Vulkan
+    }
+}
+
 #[serde_as]
 #[serde_inline_default]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GlobalConfig {
     #[serde(default)]
     pub controller_configs: IndexMap<GameSystem, IndexMap<Input, Input>>,
     #[serde_inline_default(DEFAULT_HOTKEYS.clone())]
     pub hotkeys: IndexMap<BTreeSet<Input>, Hotkey>,
-    #[serde_inline_default(true)]
-    pub hardware_acceleration: bool,
+    #[serde(default)]
+    pub graphics_setting: GraphicsSettings,
     #[serde_inline_default(true)]
     pub vsync: bool,
     #[serde_inline_default(STORAGE_DIRECTORY.clone())]
@@ -60,7 +75,7 @@ impl Default for GlobalConfig {
         Self {
             controller_configs: Default::default(),
             hotkeys: DEFAULT_HOTKEYS.clone(),
-            hardware_acceleration: true,
+            graphics_setting: GraphicsSettings::default(),
             vsync: true,
             file_browser_home: STORAGE_DIRECTORY.clone(),
             log_location: STORAGE_DIRECTORY.join("log"),

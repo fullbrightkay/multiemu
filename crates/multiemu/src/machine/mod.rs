@@ -20,6 +20,7 @@ use std::{
 };
 
 pub mod from_system;
+pub mod component_store;
 
 pub struct SchedulableComponentInfo {
     pub component: Arc<dyn SchedulableComponent>,

@@ -14,9 +14,9 @@ use num::rational::Ratio;
 use palette::Srgba;
 use serde::{Deserialize, Serialize};
 
-#[cfg(desktop)]
+#[cfg(platform_desktop)]
 mod desktop;
-#[cfg(desktop)]
+#[cfg(graphics_vulkan)]
 use desktop::vulkan::VulkanState;
 
 mod software;
@@ -25,7 +25,7 @@ use software::SoftwareState;
 #[derive(Debug)]
 #[non_exhaustive]
 enum InternalState {
-    #[cfg(desktop)]
+    #[cfg(graphics_vulkan)]
     Vulkan(VulkanState),
     Software(SoftwareState),
 }
@@ -56,7 +56,7 @@ impl Chip8Display {
         };
 
         match self.state.get() {
-            #[cfg(desktop)]
+            #[cfg(graphics_vulkan)]
             Some(InternalState::Vulkan(vulkan_state)) => vulkan_state.draw_sprite(position, sprite),
             Some(InternalState::Software(software_state)) => {
                 software_state.draw_sprite(position, sprite)
@@ -69,7 +69,7 @@ impl Chip8Display {
         tracing::trace!("Clearing display");
 
         match self.state.get() {
-            #[cfg(desktop)]
+            #[cfg(graphics_vulkan)]
             Some(InternalState::Vulkan(vulkan_state)) => vulkan_state.clear_display(),
             Some(InternalState::Software(software_state)) => software_state.clear_display(),
             _ => panic!("Internal state not initialized"),
@@ -84,7 +84,7 @@ impl Component for Chip8Display {
 
     fn save_snapshot(&self) -> rmpv::Value {
         let display_buffer = match self.state.get() {
-            #[cfg(desktop)]
+            #[cfg(graphics_vulkan)]
             Some(InternalState::Vulkan(vulkan_state)) => vulkan_state.save_screen_contents(),
             Some(InternalState::Software(software_state)) => software_state.save_screen_contents(),
             _ => panic!("Internal state not initialized"),
@@ -100,7 +100,7 @@ impl Component for Chip8Display {
         let snapshot: Chip8DisplaySnapshot = rmpv::ext::from_value(state).unwrap();
 
         match self.state.get() {
-            #[cfg(desktop)]
+            #[cfg(graphics_vulkan)]
             Some(InternalState::Vulkan(vulkan_state)) => {
                 vulkan_state.load_screen_contents(snapshot.screen_buffer);
             }
@@ -148,7 +148,7 @@ impl SchedulableComponent for Chip8Display {
             Some(InternalState::Software(software_state)) => {
                 software_state.commit_display();
             }
-            #[cfg(desktop)]
+            #[cfg(graphics_vulkan)]
             Some(InternalState::Vulkan(vulkan_state)) => {
                 vulkan_state.commit_display();
             }
@@ -166,7 +166,7 @@ impl DisplayComponent for Chip8Display {
                     framebuffer: Arc::new(Mutex::new(framebuffer)),
                 })
             }
-            #[cfg(desktop)]
+            #[cfg(graphics_vulkan)]
             DisplayComponentInitializationData::Vulkan(initialization_data) => {
                 use vulkano::buffer::Buffer;
                 use vulkano::buffer::BufferCreateInfo;
@@ -221,7 +221,7 @@ impl DisplayComponent for Chip8Display {
     fn get_framebuffer(&self) -> DisplayComponentFramebuffer {
         match self.state.get() {
             Some(InternalState::Software(software_state)) => software_state.get_framebuffer(),
-            #[cfg(desktop)]
+            #[cfg(graphics_vulkan)]
             Some(InternalState::Vulkan(vulkan_state)) => vulkan_state.get_framebuffer(),
             _ => panic!("Internal state not initialized"),
         }

@@ -1,5 +1,5 @@
 use crate::{
-    config::GLOBAL_CONFIG,
+    config::{GraphicsSettings, GLOBAL_CONFIG},
     rom::{id::RomId, info::RomInfo, manager::RomManager, system::GameSystem},
     runtime::{
         launch::Runtime,
@@ -54,13 +54,20 @@ pub fn run(
 
     transaction.commit()?;
 
-    let hardware_acceleration = global_config_guard.hardware_acceleration;
+    let graphics_setting = global_config_guard.graphics_setting;
     drop(global_config_guard);
     let rom_manager = Arc::new(rom_manager);
 
-    if hardware_acceleration {
-        #[cfg(desktop)]
-        {
+    match graphics_setting {
+        GraphicsSettings::Software => {
+            PlatformRuntime::<SoftwareRenderingRuntime>::launch_game(
+                user_specified_roms,
+                forced_game_system,
+                rom_manager,
+            );
+        }
+        #[cfg(graphics_vulkan)]
+        GraphicsSettings::Vulkan => {
             use crate::runtime::platform::desktop::renderer::vulkan::VulkanRenderingRuntime;
 
             PlatformRuntime::<VulkanRenderingRuntime>::launch_game(
@@ -69,12 +76,7 @@ pub fn run(
                 rom_manager,
             );
         }
-    } else {
-        PlatformRuntime::<SoftwareRenderingRuntime>::launch_game(
-            user_specified_roms,
-            forced_game_system,
-            rom_manager,
-        );
     }
+
     Ok(())
 }

@@ -1,5 +1,5 @@
-use crate::config::GLOBAL_CONFIG;
-use egui::{CentralPanel, Context, ScrollArea, SidePanel};
+use crate::config::{GraphicsSettings, GLOBAL_CONFIG};
+use egui::{CentralPanel, ComboBox, Context, ScrollArea, SidePanel};
 use file_browser::{FileBrowserSortingMethod, FileBrowserState};
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -141,10 +141,17 @@ impl MenuState {
                             }
                         });
 
-                        ui.checkbox(
-                            &mut global_config_guard.hardware_acceleration,
-                            "Hardware Acceleration",
-                        );
+                        ComboBox::from_label("Graphics Setting")
+                            .selected_text(global_config_guard.graphics_setting.to_string())
+                            .show_ui(ui, |ui| {
+                                for setting in GraphicsSettings::iter() {
+                                    ui.selectable_value(
+                                        &mut global_config_guard.graphics_setting,
+                                        setting,
+                                        setting.to_string(),
+                                    );
+                                }
+                            });
 
                         ui.checkbox(&mut global_config_guard.vsync, "VSync");
                     }

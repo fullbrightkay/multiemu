@@ -12,14 +12,14 @@ use std::{
 
 pub enum DisplayComponentInitializationData {
     Software,
-    #[cfg(desktop)]
+    #[cfg(graphics_vulkan)]
     Vulkan(super::platform::desktop::renderer::vulkan::VulkanDisplayComponentInitializationData),
 }
 
 #[derive(Clone)]
 pub enum DisplayComponentFramebuffer {
     Software(Arc<Mutex<DMatrix<Srgba<u8>>>>),
-    #[cfg(desktop)]
+    #[cfg(graphics_vulkan)]
     Vulkan(Arc<vulkano::image::Image>),
 }
 

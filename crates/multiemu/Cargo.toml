@@ -61,7 +61,7 @@ egui-winit = { version = "0.30", default-features = false, features = [
     "wayland",
     "x11",
 ] }
-vulkano = { version = "0.34", default-features = false }
+vulkano = { version = "0.34", default-features = false, optional = true }
 dirs = "6.0"
 softbuffer = "0.4"
 # Cli tool stuff
@@ -76,3 +76,5 @@ ctru-rs = { git = "https://github.com/rust3ds/ctru-rs" }
 cfg_aliases = "0.2"
 
 [features]
+default = ["vulkan"]
+vulkan = ["dep:vulkano"]

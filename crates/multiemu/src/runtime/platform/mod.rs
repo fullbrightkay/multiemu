@@ -1,13 +1,13 @@
-#[cfg(desktop)]
+#[cfg(platform_desktop)]
 pub mod desktop;
-#[cfg(desktop)]
+#[cfg(platform_desktop)]
 pub use desktop::renderer::software::SoftwareRenderingRuntime;
-#[cfg(desktop)]
+#[cfg(platform_desktop)]
 pub use desktop::PlatformRuntime;
 
-#[cfg(nintendo_3ds)]
+#[cfg(platform_3ds)]
 pub mod nintendo_3ds;
-#[cfg(nintendo_3ds)]
+#[cfg(platform_3ds)]
 pub use nintendo_3ds::renderer::software::SoftwareRenderingRuntime;
-#[cfg(nintendo_3ds)]
+#[cfg(platform_3ds)]
 pub use nintendo_3ds::PlatformRuntime;
