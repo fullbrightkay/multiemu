@@ -2,8 +2,9 @@ use crate::{
     config::{GlobalConfig, GLOBAL_CONFIG},
     rom::{id::RomId, info::RomInfo, manager::RomManager},
 };
-use rayon::prelude::{ParallelBridge, ParallelIterator};
+use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::{
+    error::Error,
     fs::{self, File},
     ops::Deref,
     path::{Path, PathBuf},
@@ -11,7 +12,7 @@ use std::{
 use walkdir::WalkDir;
 use zip::ZipArchive;
 
-pub fn run(paths: Vec<PathBuf>, symlink: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub fn rom_import(paths: Vec<PathBuf>, symlink: bool) -> Result<(), Box<dyn Error>> {
     let global_config_guard = GLOBAL_CONFIG.try_read()?;
     let rom_manager = RomManager::new(Some(&global_config_guard.database_file))?;
     fs::create_dir_all(&global_config_guard.roms_directory)?;
@@ -34,10 +35,10 @@ pub fn run(paths: Vec<PathBuf>, symlink: bool) -> Result<(), Box<dyn std::error:
                         &rom_manager,
                     )
                 })
-                .map_err(|e| e as Box<dyn std::error::Error>)?;
+                .map_err(|e| e as Box<dyn Error>)?;
         } else {
             process_file(symlink, path, global_config_guard.deref(), &rom_manager)
-                .map_err(|e| e as Box<dyn std::error::Error>)?;
+                .map_err(|e| e as Box<dyn Error>)?;
         }
     }
 
@@ -49,7 +50,7 @@ fn process_file(
     path: impl AsRef<Path>,
     global_config: &GlobalConfig,
     database: &RomManager,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let path = path.as_ref();
     let database_transaction = database.rom_information.r_transaction()?;
 
@@ -67,6 +68,7 @@ fn process_file(
             if zip_entry.is_file() {
                 let hash = RomId::from_read(&mut zip_entry);
                 drop(zip_entry);
+
                 // We simply reopen it since seeking isn't supported
                 let mut zip_entry = zip_file.by_index(file_index)?;
 
@@ -113,7 +115,6 @@ fn process_file(
         let internal_store_path = global_config.roms_directory.join(hash_string);
         let _ = fs::remove_file(&internal_store_path);
 
-        #[cfg(unix)]
         if symlink {
             #[cfg(unix)]
             std::os::unix::fs::symlink(path, internal_store_path)?;

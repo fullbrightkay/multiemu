@@ -1,6 +1,5 @@
-use dashmap::DashMap;
-
 use super::{id::RomId, info::RomInfo};
+use dashmap::DashMap;
 use std::{
     collections::HashMap,
     error::Error,
@@ -37,7 +36,7 @@ impl RomManager {
         })
     }
 
-    pub fn load_database(&self, path: impl AsRef<Path>) -> Result<(), Box<dyn Error>> {
+    pub fn load_database(&self, path: impl AsRef<Path>) -> Result<(), Box<dyn Error + Send + Sync>> {
         let path = path.as_ref();
 
         if !path.is_file() {
@@ -46,7 +45,6 @@ impl RomManager {
 
         let database = native_db::Builder::new().open(&DATABASE_MODELS, path)?;
         let external_database_transaction = database.r_transaction()?;
-        let internal_database_transaction = self.rom_information.rw_transaction()?;
 
         for item in (external_database_transaction
             .scan()
@@ -54,10 +52,10 @@ impl RomManager {
             .all()?)
         .flatten()
         {
+            let internal_database_transaction = self.rom_information.rw_transaction()?;
             internal_database_transaction.upsert(item)?;
+            internal_database_transaction.commit()?;
         }
-
-        internal_database_transaction.commit()?;
 
         Ok(())
     }

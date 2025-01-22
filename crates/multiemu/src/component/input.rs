@@ -1,13 +1,18 @@
 use super::Component;
-use crate::input::{GamepadId, Input};
-use std::{borrow::Cow, collections::HashSet, sync::Arc};
+use crate::input::{manager::InputManager, GamepadId, GamepadPort, Input};
+use std::{
+    borrow::Cow,
+    collections::HashSet,
+    sync::{mpsc::Receiver, Arc},
+};
 
-pub struct ControllerKind {
+#[derive(Debug, Clone)]
+pub struct EmulatedGamepadMetadata {
     pub name: Cow<'static, str>,
     pub inputs: HashSet<Input>,
 }
 
 pub trait InputComponent: Component {
-    /// Feeds in input changes to the component
-    fn feed_input(&self, gamepad_id: GamepadId, input: Input) {}
+    /// Sets the input manager and what gamepad ids this thing obeys
+    fn set_input_manager(&self, input_manager: Arc<InputManager>, gamepad_ports: &[GamepadPort]) {}
 }

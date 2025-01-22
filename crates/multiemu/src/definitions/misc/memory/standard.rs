@@ -117,7 +117,6 @@ impl FromConfig for StandardMemory {
             "Memory assigned must be non-empty"
         );
 
-        let rom_manager = component_builder.machine().rom_manager();
         let buffer_size = config.assigned_range.len();
         let chunks_needed = buffer_size.div_ceil(CHUNK_SIZE);
         let buffer = Vec::from_iter(
@@ -130,7 +129,7 @@ impl FromConfig for StandardMemory {
         let me = Self {
             config,
             buffer: buffer.into_iter().collect(),
-            rom_manager,
+            rom_manager: component_builder.machine().rom_manager.clone(),
         };
         me.initialize_buffer();
 

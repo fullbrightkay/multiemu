@@ -46,9 +46,9 @@ impl FromConfig for RomMemory {
     type Config = RomMemoryConfig;
 
     fn from_config(component_builder: &mut ComponentBuilder<Self>, config: Self::Config) {
-        let rom_manager = component_builder.machine().rom_manager();
-
-        let rom_file = rom_manager
+        let rom_file = component_builder
+            .machine()
+            .rom_manager
             .open(config.rom, RomRequirement::Required)
             .unwrap();
 

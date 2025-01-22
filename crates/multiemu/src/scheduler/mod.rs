@@ -1,3 +1,4 @@
+use crate::machine::ComponentTable;
 use crate::{component::ComponentId, machine::Machine};
 use framerate_tracker::FramerateTracker;
 use itertools::Itertools;
@@ -23,9 +24,8 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(machine: &Machine) -> Self {
-        let component_infos: HashMap<_, _> = machine
-            .components
+    pub fn new(components: &HashMap<ComponentId, ComponentTable>) -> Self {
+        let component_infos: HashMap<_, _> = components
             .iter()
             .filter_map(|(component_id, table)| {
                 if let Some(schedulable_component) = &table.as_schedulable {
@@ -150,7 +150,7 @@ impl Scheduler {
         }
     }
 
-    pub fn run(&mut self, machine: &Machine) {
+    pub fn run(&mut self, components: &HashMap<ComponentId, ComponentTable>) {
         self.framerate_tracker.record_frame();
         // TODO: This should actually be calculating how much time is between frames minus draw time
         let average_frame_time = self.framerate_tracker.average_frame_timings();
@@ -169,8 +169,7 @@ impl Scheduler {
             {
                 // TODO: Run this through rayon once we can stop vulkan related concurrency issues
                 for component_id in component_ids {
-                    if let Some(component_info) = machine
-                        .components
+                    if let Some(component_info) = components
                         .get(component_id)
                         .and_then(|table| table.as_schedulable.as_ref())
                     {

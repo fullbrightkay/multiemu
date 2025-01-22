@@ -95,19 +95,8 @@ impl FromStr for GameSystem {
 
         GameSystem::iter()
             // find variations on a system
-            .map(|system| {
-                let distance =
-                    strsim::normalized_damerau_levenshtein(&s, &system.to_string().to_lowercase());
-
-                tracing::debug!("Distance of {} to {} is {}%", s, system, distance * 100.0);
-
-                (system, distance)
-            })
-            // find the closest match
-            .max_by(|(_, distance1), (_, distance2)| distance1.total_cmp(distance2))
-            // Discard if its not confident enough
-            .and_then(|(system, distance)| if distance >= 0.65 { Some(system) } else { None })
-            .ok_or_else(|| format!("Unknown system: {}", s))
+            .find(|system| s == system.to_string().to_lowercase())
+            .ok_or(format!("Unknown system: {}", s))
     }
 }
 

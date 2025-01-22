@@ -26,10 +26,7 @@ pub enum MachineContext {
         forced_system: Option<GameSystem>,
     },
     /// Machine is currently running
-    Running {
-        machine: Machine,
-        scheduler: Scheduler,
-    },
+    Running(Machine),
 }
 
 pub struct WindowingContext<RS: RenderingBackendState> {
@@ -82,12 +79,9 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> ApplicationHandl
                 runtime_state.initialize_machine(&machine);
 
                 self.menu.active = false;
-                self.machine_context = Some(MachineContext::Running {
-                    scheduler: Scheduler::new(&machine),
-                    machine,
-                });
+                self.machine_context = Some(MachineContext::Running(machine));
             }
-            Some(MachineContext::Running { machine, scheduler }) => {
+            Some(MachineContext::Running(_)) => {
                 panic!("Window resume while machine is running");
             }
             None => {}
@@ -193,10 +187,7 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> ApplicationHandl
                                     }
                                 };
 
-                                self.machine_context = Some(MachineContext::Running {
-                                    scheduler: Scheduler::new(&machine),
-                                    machine,
-                                })
+                                self.machine_context = Some(MachineContext::Running(machine))
                             } else {
                                 tracing::error!("Could not identify rom at {}", path.display());
                             }
@@ -206,11 +197,9 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> ApplicationHandl
                     window_context
                         .runtime_state
                         .redraw_menu(&self.menu.egui_context, full_output);
-                } else if let Some(MachineContext::Running { machine, scheduler }) =
-                    &mut self.machine_context
-                {
+                } else if let Some(MachineContext::Running(machine)) = &mut self.machine_context {
+                    machine.run();
                     window_context.runtime_state.redraw(machine);
-                    scheduler.run(machine);
                     window_context.window.request_redraw();
                 } else {
                     tracing::warn!("Machine not running when redraw requested");

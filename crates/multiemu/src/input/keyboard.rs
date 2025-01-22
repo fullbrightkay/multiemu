@@ -203,7 +203,7 @@ pub enum KeyboardInput {
     F35,
 }
 
-#[cfg(desktop)]
+#[cfg(platform_desktop)]
 mod desktop {
     use super::KeyboardInput;
     use crate::input::Input;

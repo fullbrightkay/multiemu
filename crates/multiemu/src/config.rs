@@ -37,9 +37,10 @@ pub enum GraphicsSettings {
     Vulkan,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for GraphicsSettings {
     fn default() -> Self {
-        #[cfg(platform_desktop)]
+        #[cfg(graphics_vulkan)]
         GraphicsSettings::Vulkan
     }
 }

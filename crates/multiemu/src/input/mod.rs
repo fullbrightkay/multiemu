@@ -1,3 +1,4 @@
+use crate::component::ComponentId;
 use dashmap::DashMap;
 use gamepad::GamepadInput;
 use keyboard::KeyboardInput;
@@ -5,11 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use strum::IntoEnumIterator;
 
-use crate::component::ComponentId;
-
 pub mod gamepad;
 pub mod hotkey;
 pub mod keyboard;
+pub mod manager;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Input {
@@ -64,14 +64,8 @@ impl InputState {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GamepadId(pub u8);
+/// Id of a gamepad currently recognized by the emulator
+pub type GamepadId = u8;
 
-impl GamepadId {
-    /// The default input device for a platform
-    ///
-    /// On desktop platforms this means the keyboard
-    /// 
-    /// On the 3ds this is the builtin gamepad
-    const STANDARD_INPUT_DEVICE: Self = Self(0);
-}
+/// Id for a emulated gamepad on the emulator
+pub type GamepadPort = u8;

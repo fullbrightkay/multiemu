@@ -1,5 +1,5 @@
 use super::{
-    input::Chip8Key,
+    input::Chip8KeyCode,
     instruction::{Chip8InstructionSet, InstructionSetChip8},
     Chip8Processor, ExecutionState, ProcessorState,
 };
@@ -252,35 +252,25 @@ impl Chip8Processor {
                     self.display.draw_sprite(actual_coords, &buffer) as u8;
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Skpr { key }) => {
-                let key = Chip8Key(state.registers.work_registers[key as usize]);
+                let (input_manager, gamepad_port) = self.input_manager.get().unwrap();
+                let key = Chip8KeyCode(state.registers.work_registers[key as usize]);
 
-                /*
-                let key_value = self
-                    .input_manager
-                    .as_ref()
-                    .unwrap()
-                    .get_virtual_input(self.id, key.try_into().unwrap())
-                    .unwrap_or_default();
+                let key_value = input_manager.get_input(*gamepad_port, key.try_into().unwrap());
 
                 if key_value.as_digital() {
-                    *program_pointer += 2;
+                    state.registers.program = state.registers.program.wrapping_add(2);
                 }
-                 */
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Skup { key }) => {
-                let key = Chip8Key(state.registers.work_registers[key as usize]);
-                /*
-                let key_value = self
-                    .input_manager
-                    .as_ref()
-                    .unwrap()
-                    .get_virtual_input(self.id, key.try_into().unwrap())
-                    .unwrap_or_default();
+                let (input_manager, gamepad_port) = self.input_manager.get().unwrap();
+
+                let key = Chip8KeyCode(state.registers.work_registers[key as usize]);
+
+                let key_value = input_manager.get_input(*gamepad_port, key.try_into().unwrap());
 
                 if !key_value.as_digital() {
-                    *program_pointer += 2;
+                    state.registers.program = state.registers.program.wrapping_add(2);
                 }
-                 */
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Moved { register }) => {
                 let delay_timer_value = self.timer.get();
@@ -360,8 +350,8 @@ impl Chip8Processor {
                     state.registers.index = state.registers.index.wrapping_add(count as u16 + 1);
                 }
             }
-            Chip8InstructionSet::SuperChip8(chip8_instruction_set_super) => todo!(),
-            Chip8InstructionSet::XoChip(chip8_instruction_set_xo) => todo!(),
+            Chip8InstructionSet::SuperChip8(_) => todo!(),
+            Chip8InstructionSet::XoChip(_) => todo!(),
         }
     }
 }

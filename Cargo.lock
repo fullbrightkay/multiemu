@@ -1829,7 +1829,6 @@ dependencies = [
  "serde_with",
  "sha1",
  "softbuffer",
- "strsim",
  "strum",
  "thiserror 2.0.11",
  "tracing",

@@ -1,5 +1,4 @@
 use std::sync::{Arc, Mutex, OnceLock};
-
 use super::Chip8Kind;
 use crate::{
     component::{
@@ -8,7 +7,7 @@ use crate::{
     machine::ComponentBuilder,
     runtime::rendering_backend::{DisplayComponentFramebuffer, DisplayComponentInitializationData},
 };
-use bitvec::{order::Msb0, ptr::Mut, view::BitView};
+use bitvec::{order::Msb0, view::BitView};
 use nalgebra::{DMatrix, DMatrixViewMut, Point2, Vector2};
 use num::rational::Ratio;
 use palette::Srgba;

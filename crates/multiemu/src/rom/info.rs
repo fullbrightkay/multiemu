@@ -11,9 +11,9 @@ use serde_with::serde_as;
 #[native_model(id = 1, version = 1)]
 #[native_db]
 pub struct RomInfo {
-    pub name: Option<String>,
     #[primary_key]
-    pub hash: RomId,
+    pub id: RomId,
+    pub name: Option<String>,
     pub system: GameSystem,
     pub region: Option<RomRegion>,
 }

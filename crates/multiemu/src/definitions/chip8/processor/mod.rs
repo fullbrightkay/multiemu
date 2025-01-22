@@ -1,21 +1,27 @@
 use super::{audio::Chip8Audio, display::Chip8Display, timer::Chip8Timer, Chip8Kind};
 use crate::{
     component::{
-        input::{ControllerKind, InputComponent},
+        input::{EmulatedGamepadMetadata, InputComponent},
         schedulable::SchedulableComponent,
         Component, ComponentId, FromConfig,
     },
-    input::{keyboard::KeyboardInput, Input},
+    input::{
+        gamepad::GamepadInput,
+        keyboard::KeyboardInput,
+        manager::{GamepadState, InputManager},
+        GamepadPort, Input,
+    },
     machine::ComponentBuilder,
     memory::MemoryTranslationTable,
 };
 use arrayvec::ArrayVec;
 use decode::decode_instruction;
-use input::Chip8Key;
+use input::Chip8KeyCode;
 use instruction::Register;
 use num::rational::Ratio;
 use serde::{Deserialize, Serialize};
 use std::{
+    borrow::Cow,
     collections::HashSet,
     sync::{Arc, Mutex, OnceLock},
 };
@@ -25,12 +31,17 @@ mod input;
 mod instruction;
 mod interpret;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ExecutionState {
     Normal,
-    AwaitingKeyPress { register: Register },
+    AwaitingKeyPress {
+        register: Register,
+    },
     // KeyQuery does not return on key press but on key release, contrary to some documentation
-    AwaitingKeyRelease { register: Register, key: Chip8Key },
+    AwaitingKeyRelease {
+        register: Register,
+        keys: Vec<Chip8KeyCode>,
+    },
 }
 
 // This is extremely complex because the chip8 cpu has a lot of non cpu machinery
@@ -69,12 +80,20 @@ pub struct ProcessorState {
 
 /// FIXME: This complexity is insane
 pub struct Chip8Processor {
+    /// Configuration this processor was created with
     config: Chip8ProcessorConfig,
+    /// chip8 display component
     display: Arc<Chip8Display>,
+    /// chip8 audio component
     audio: Arc<Chip8Audio>,
+    /// chip8 timer component
     timer: Arc<Chip8Timer>,
+    /// parts of the cpu that actually change over execution
     state: Mutex<ProcessorState>,
+    /// memory translation table
     memory_translation_table: OnceLock<Arc<MemoryTranslationTable>>,
+    /// input manager + port for our keypad
+    input_manager: OnceLock<(Arc<InputManager>, GamepadPort)>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -99,7 +118,7 @@ impl Component for Chip8Processor {
         rmpv::ext::to_value(&Chip8ProcessorSnapshot {
             registers: state.registers.clone(),
             stack: state.stack.clone(),
-            execution_state: state.execution_state,
+            execution_state: state.execution_state.clone(),
         })
         .unwrap()
     }
@@ -148,44 +167,47 @@ impl FromConfig for Chip8Processor {
                     .expect("Timer component not found"),
                 config,
                 memory_translation_table: OnceLock::default(),
+                input_manager: OnceLock::default(),
             })
             .set_schedulable(frequency, [], [])
-            .set_input(
-                [ControllerKind {
-                    name: "Chip8 Keypad".into(),
-                    inputs: HashSet::from_iter([
-                        Input::Keyboard(KeyboardInput::Numpad1),
-                        Input::Keyboard(KeyboardInput::Numpad2),
-                        Input::Keyboard(KeyboardInput::Numpad3),
-                        Input::Keyboard(KeyboardInput::KeyC),
-                        Input::Keyboard(KeyboardInput::Numpad4),
-                        Input::Keyboard(KeyboardInput::Numpad5),
-                        Input::Keyboard(KeyboardInput::Numpad6),
-                        Input::Keyboard(KeyboardInput::KeyD),
-                        Input::Keyboard(KeyboardInput::Numpad7),
-                        Input::Keyboard(KeyboardInput::Numpad8),
-                        Input::Keyboard(KeyboardInput::Numpad9),
-                        Input::Keyboard(KeyboardInput::KeyE),
-                        Input::Keyboard(KeyboardInput::KeyA),
-                        Input::Keyboard(KeyboardInput::Numpad0),
-                        Input::Keyboard(KeyboardInput::KeyB),
-                        Input::Keyboard(KeyboardInput::KeyF),
-                    ]),
-                }],
-                // Chip8 only has a single controller
-                1,
-            );
+            .set_input([Cow::Owned(EmulatedGamepadMetadata {
+                name: "Chip8 Keypad".into(),
+                inputs: HashSet::from_iter([
+                    Input::Keyboard(KeyboardInput::Numpad1),
+                    Input::Keyboard(KeyboardInput::Numpad2),
+                    Input::Keyboard(KeyboardInput::Numpad3),
+                    Input::Keyboard(KeyboardInput::KeyC),
+                    Input::Keyboard(KeyboardInput::Numpad4),
+                    Input::Keyboard(KeyboardInput::Numpad5),
+                    Input::Keyboard(KeyboardInput::Numpad6),
+                    Input::Keyboard(KeyboardInput::KeyD),
+                    Input::Keyboard(KeyboardInput::Numpad7),
+                    Input::Keyboard(KeyboardInput::Numpad8),
+                    Input::Keyboard(KeyboardInput::Numpad9),
+                    Input::Keyboard(KeyboardInput::KeyE),
+                    Input::Keyboard(KeyboardInput::KeyA),
+                    Input::Keyboard(KeyboardInput::Numpad0),
+                    Input::Keyboard(KeyboardInput::KeyB),
+                    Input::Keyboard(KeyboardInput::KeyF),
+                ]),
+            })]);
     }
 }
 
-impl InputComponent for Chip8Processor {}
+impl InputComponent for Chip8Processor {
+    fn set_input_manager(&self, input_manager: Arc<InputManager>, gamepad_ports: &[GamepadPort]) {
+        self.input_manager
+            .set((input_manager, gamepad_ports[0]))
+            .expect("Input manager set multiple times");
+    }
+}
 
 impl SchedulableComponent for Chip8Processor {
     fn run(&self, period: u64) {
         let mut state = self.state.lock().unwrap();
 
         for _ in 0..period {
-            match state.execution_state {
+            match &state.execution_state {
                 ExecutionState::Normal => {
                     let mut instruction = [0; 2];
                     self.memory_translation_table
@@ -204,38 +226,44 @@ impl SchedulableComponent for Chip8Processor {
                     self.interpret_instruction(&mut state, decompiled_instruction);
                 }
                 ExecutionState::AwaitingKeyPress { register } => {
+                    // FIXME: A allocation every cycle isn't a good idea
+                    let mut pressed = Vec::new();
+                    let (input_manager, gamepad_port) = self.input_manager.get().unwrap();
 
-                    /*
-                    if let Some(key) =
-                        input_manager
-                            .iter_virtual(self.id)
-                            .find_map(|(key, input)| {
-                                if input.as_digital() {
-                                    return Some(Chip8Key::try_from(key).unwrap());
-                                }
+                    // Go through every chip8 key
+                    for key in 0x0..0xf {
+                        let keycode = Chip8KeyCode(key);
 
-                                None
-                            })
-                    {
-                        self.execution_state = ExecutionState::AwaitingKeyRelease { register, key };
+                        if input_manager
+                            .get_input(*gamepad_port, keycode.try_into().unwrap())
+                            .as_digital()
+                        {
+                            pressed.push(keycode);
+                        }
                     }
-                     */
-                }
-                ExecutionState::AwaitingKeyRelease { register, key } => {
-                    /*
-                    let input_manager = self.input_manager.as_ref().unwrap();
 
-                    if !input_manager
-                        .get_virtual_input(self.id, key.try_into().unwrap())
-                        .map(|input| input.as_digital())
-                        .unwrap_or_default()
-                    {
-                        self.registers.work_registers[register as usize] = key.0;
-                        self.execution_state = ExecutionState::Normal;
+                    if !pressed.is_empty() {
+                        state.execution_state = ExecutionState::AwaitingKeyRelease {
+                            register: *register,
+                            keys: pressed,
+                        }
                     }
-                     */
                 }
-                _ => {}
+                ExecutionState::AwaitingKeyRelease { register, keys } => {
+                    let (input_manager, gamepad_port) = self.input_manager.get().unwrap();
+
+                    for key_code in keys {
+                        if !input_manager
+                            .get_input(*gamepad_port, (*key_code).try_into().unwrap())
+                            .as_digital()
+                        {
+                            let register = *register;
+                            state.registers.work_registers[register as usize] = key_code.0;
+                            state.execution_state = ExecutionState::Normal;
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
