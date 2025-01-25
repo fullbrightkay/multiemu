@@ -188,7 +188,7 @@ impl InputComponent for Chip8Processor {
             .set((
                 input_manager,
                 gamepad_ports
-                    .get(0)
+                    .first()
                     .copied()
                     .expect("Input manager did not allocate our gamepad"),
             ))

@@ -172,7 +172,7 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> ApplicationHandl
                 event,
                 is_synthetic,
             } => {
-                if !is_synthetic {
+                if is_synthetic {
                     return;
                 }
 
