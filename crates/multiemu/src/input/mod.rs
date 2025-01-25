@@ -1,9 +1,6 @@
-use crate::component::ComponentId;
-use dashmap::DashMap;
 use gamepad::GamepadInput;
 use keyboard::KeyboardInput;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 use strum::IntoEnumIterator;
 
 pub mod gamepad;
@@ -68,4 +65,4 @@ impl InputState {
 pub type GamepadId = u8;
 
 /// Id for a emulated gamepad on the emulator
-pub type GamepadPort = u8;
+pub type EmulatedGamepadId = u8;

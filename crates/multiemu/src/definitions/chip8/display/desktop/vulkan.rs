@@ -2,7 +2,6 @@ use crate::{
     definitions::chip8::display::{draw_sprite_common, Chip8DisplayImplementation},
     runtime::rendering_backend::DisplayComponentFramebuffer,
 };
-use bitvec::{prelude::Msb0, view::BitView};
 use nalgebra::{DMatrix, DMatrixViewMut, Point2};
 use palette::Srgba;
 use std::{ops::DerefMut, sync::Arc};

@@ -6,7 +6,7 @@ use thiserror::Error;
 use crate::processor::{InstructionSet, InstructionTextRepresentation};
 
 #[derive(Debug, Error)]
-pub enum DecodingError {
+pub(super) enum DecodingError {
     #[error("Invalid instruction: {0:?}")]
     InvalidInstruction([u8; 2]),
     #[error("Unknown nom error")]
@@ -15,7 +15,7 @@ pub enum DecodingError {
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
-pub enum Register {
+pub(super) enum Register {
     V0,
     V1,
     V2,

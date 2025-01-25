@@ -1,43 +1,30 @@
-use crate::component::input::EmulatedGamepadMetadata;
-
-use super::{GamepadId, GamepadPort, Input, InputState};
-use dashmap::DashMap;
-use std::{
-    borrow::Cow, collections::{HashMap, HashSet}, sync::Arc
+use crate::{
+    component::input::{EmulatedGamepadMetadata, EmulatedGamepadTypeId},
+    config::GLOBAL_CONFIG,
+    rom::system::GameSystem,
 };
 
-#[derive(Debug, PartialEq)]
-pub struct GamepadState(pub HashMap<Input, InputState>);
-
-impl GamepadState {
-    pub fn diff<'a>(
-        &'a self,
-        other: &'a Self,
-    ) -> impl Iterator<Item = (Input, InputState)> + use<'a> {
-        self.0
-            .iter()
-            .filter_map(move |(input, state)| match other.0.get(input) {
-                Some(other_state) if state != other_state => Some((*input, *state)),
-                _ => None,
-            })
-    }
-}
+use super::{EmulatedGamepadId, GamepadId, Input, InputState};
+use dashmap::DashMap;
+use std::collections::HashMap;
 
 #[derive(Debug)]
-struct PortInfo {
+/// Stores what each gamepad is cached to be at right now
+struct EmulatedGamepadState {
+    kind: EmulatedGamepadTypeId,
     state: HashMap<Input, InputState>,
-    metadata: Cow<'static, EmulatedGamepadMetadata>,
 }
 
 #[derive(Debug, Default)]
 pub struct InputManager {
-    ports: DashMap<GamepadPort, PortInfo>,
-    real_to_emulated_mapping: DashMap<GamepadId, GamepadPort>,
+    pub gamepad_types: HashMap<EmulatedGamepadTypeId, EmulatedGamepadMetadata>,
+    emulated_gamepads: DashMap<EmulatedGamepadId, EmulatedGamepadState>,
+    real_to_emulated_gamepad_mappings: DashMap<GamepadId, EmulatedGamepadId>,
 }
 
 impl InputManager {
-    pub fn get_input(&self, port: GamepadPort, input: Input) -> InputState {
-        self.ports
+    pub fn get_input(&self, port: EmulatedGamepadId, input: Input) -> InputState {
+        self.emulated_gamepads
             .get(&port)
             .unwrap()
             .state
@@ -46,30 +33,67 @@ impl InputManager {
             .unwrap_or_default()
     }
 
-    pub fn set_input(&self, id: GamepadId, input: Input, state: InputState) {
-        if let Some(mut port_info) = self
-            .real_to_emulated_mapping
+    pub fn insert_input(&self, system: GameSystem, id: GamepadId, input: Input, state: InputState) {
+        let global_config = GLOBAL_CONFIG.read().unwrap();
+
+        // Find out which real controller is hooked up to which emulated one
+        if let Some(mut emulated_gamepad_state) = self
+            .real_to_emulated_gamepad_mappings
             .get(&id)
-            .and_then(|entry| self.ports.get_mut(entry.key()))
+            .and_then(|entry| self.emulated_gamepads.get_mut(entry.key()))
         {
-            if port_info.metadata.inputs.contains(&input) {
-                port_info.state.insert(input, state);
+            let metadata = self
+                .gamepad_types
+                .get(&emulated_gamepad_state.kind)
+                .unwrap();
+
+            // Translate the input according to the global config
+            let Some(translated_input) = global_config
+                .gamepad_configs
+                .get(&system)
+                .and_then(|emulated_gamepad_infos| {
+                    emulated_gamepad_infos.get(&emulated_gamepad_state.kind)
+                })
+                .and_then(|gamepad_specific_mappings| gamepad_specific_mappings.get(&input))
+            else {
+                tracing::warn!("Unbound input {:?}", input);
+                return;
+            };
+
+            if metadata.present_inputs.contains(translated_input) {
+                emulated_gamepad_state
+                    .state
+                    .insert(*translated_input, state);
+            } else {
+                tracing::warn!("We have a bound from {:?} to {:?}, but emulated gamepad doesn't support this input", input, translated_input);
             }
         }
     }
 
-    pub fn get_full_state(&self, port: GamepadPort) -> GamepadState {
-        GamepadState(self.ports.get(&port).unwrap().state.clone())
+    pub fn set_real_to_emulated_mapping(&self, gamepad_id: GamepadId, index: EmulatedGamepadId) {
+        self.real_to_emulated_gamepad_mappings
+            .insert(gamepad_id, index);
     }
 
-    /// Components do not call this!!!!!!!!!!1
-    pub fn register_gamepad_port(&self, port: GamepadPort, metadata: Cow<'static, EmulatedGamepadMetadata>) {
-        self.ports.insert(
+    pub fn register_emulated_gamepad(
+        &mut self,
+        port: EmulatedGamepadId,
+        kind: EmulatedGamepadTypeId,
+    ) {
+        self.emulated_gamepads.insert(
             port,
-            PortInfo {
+            EmulatedGamepadState {
                 state: HashMap::default(),
-                metadata,
+                kind,
             },
         );
+    }
+
+    pub fn register_emulated_gamepad_type(
+        &mut self,
+        kind: EmulatedGamepadTypeId,
+        metadata: EmulatedGamepadMetadata,
+    ) {
+        self.gamepad_types.insert(kind, metadata);
     }
 }

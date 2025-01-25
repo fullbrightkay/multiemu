@@ -1,7 +1,9 @@
 use super::PlatformRuntime;
 use crate::{
+    config::GLOBAL_CONFIG,
     definitions::chip8::chip8_machine,
     gui::menu::UiOutput,
+    input::{GamepadId, InputState},
     machine::Machine,
     rom::{
         id::RomId,
@@ -9,15 +11,20 @@ use crate::{
         system::{GameSystem, OtherSystem},
     },
     runtime::rendering_backend::RenderingBackendState,
-    scheduler::Scheduler,
 };
-use std::{fs::File, sync::Arc, time::Duration};
+use indexmap::IndexMap;
+use std::{fs::File, sync::Arc};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
     event_loop::ActiveEventLoop,
+    keyboard::PhysicalKey,
     window::{Window, WindowId},
 };
+
+// FIXME: Duplicated hack code is present here
+
+const KEYBOARD_GAMEPAD_ID: GamepadId = 0;
 
 pub enum MachineContext {
     /// Machine is waiting for graphics context to be ready
@@ -78,6 +85,23 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> ApplicationHandl
                     Machine::from_system(user_specified_roms, self.rom_manager.clone(), system);
                 runtime_state.initialize_machine(&machine);
 
+                // HACK: Wire the keyboard to port 0
+                machine
+                    .input_manager
+                    .set_real_to_emulated_mapping(KEYBOARD_GAMEPAD_ID, 0);
+
+                // Make sure the system being run has a default mapping
+                let mut global_config_guard = GLOBAL_CONFIG.write().unwrap();
+
+                for (gamepad_type, metadata) in machine.input_manager.gamepad_types.iter() {
+                    global_config_guard
+                        .gamepad_configs
+                        .entry(machine.system)
+                        .or_default()
+                        .entry(gamepad_type.clone())
+                        .or_insert_with(|| IndexMap::from_iter(metadata.default_bindings.clone()));
+                }
+
                 self.menu.active = false;
                 self.machine_context = Some(MachineContext::Running(machine));
             }
@@ -133,6 +157,14 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> ApplicationHandl
         match event {
             WindowEvent::CloseRequested => {
                 tracing::info!("Window close requested");
+
+                // Save the config on exit
+                GLOBAL_CONFIG
+                    .read()
+                    .unwrap()
+                    .save()
+                    .expect("Failed to save config");
+
                 event_loop.exit();
             }
             WindowEvent::KeyboardInput {
@@ -143,9 +175,25 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> ApplicationHandl
                 if !is_synthetic {
                     return;
                 }
+
+                if let PhysicalKey::Code(key_code) = event.physical_key {
+                    let state = event.state.is_pressed();
+
+                    if !self.menu.active {
+                        if let Some(MachineContext::Running(machine)) = &mut self.machine_context {
+                            machine.input_manager.insert_input(
+                                machine.system,
+                                KEYBOARD_GAMEPAD_ID,
+                                key_code.try_into().unwrap(),
+                                InputState::Digital(state),
+                            );
+                        }
+                    }
+                }
             }
             WindowEvent::RedrawRequested => {
                 if self.menu.active {
+                    // We put the ui output like this so multipassing egui gui building works
                     let mut ui_output = None;
                     let full_output = self.menu.egui_context.clone().run(
                         window_context
@@ -187,7 +235,32 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> ApplicationHandl
                                     }
                                 };
 
-                                self.machine_context = Some(MachineContext::Running(machine))
+                                // HACK: Wire the keyboard to port 0
+                                machine
+                                    .input_manager
+                                    .set_real_to_emulated_mapping(KEYBOARD_GAMEPAD_ID, 0);
+
+                                // Make sure the system being run has a default mapping
+                                let mut global_config_guard = GLOBAL_CONFIG.write().unwrap();
+
+                                for (gamepad_type, metadata) in
+                                    machine.input_manager.gamepad_types.iter()
+                                {
+                                    global_config_guard
+                                        .gamepad_configs
+                                        .entry(machine.system)
+                                        .or_default()
+                                        .entry(gamepad_type.clone())
+                                        .or_insert_with(|| {
+                                            IndexMap::from_iter(metadata.default_bindings.clone())
+                                        });
+                                }
+
+                                // Initialize graphics components
+                                window_context.runtime_state.initialize_machine(&machine);
+                                self.machine_context = Some(MachineContext::Running(machine));
+                                // Close the menu
+                                self.menu.active = false;
                             } else {
                                 tracing::error!("Could not identify rom at {}", path.display());
                             }

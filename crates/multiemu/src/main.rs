@@ -1,3 +1,5 @@
+//! A multisystem hardware emulator
+
 use config::{GraphicsSettings, GLOBAL_CONFIG};
 use rom::manager::RomManager;
 use runtime::{
@@ -6,19 +8,20 @@ use runtime::{
 };
 use std::sync::Arc;
 
+// Cli tools are designed only to operate on desktop
 #[cfg(platform_desktop)]
-pub mod cli;
-pub mod component;
-pub mod config;
-pub mod definitions;
-pub mod gui;
-pub mod input;
-pub mod machine;
-pub mod memory;
-pub mod processor;
-pub mod rom;
-pub mod runtime;
-pub mod scheduler;
+mod cli;
+mod component;
+mod config;
+mod definitions;
+mod gui;
+mod input;
+mod machine;
+mod memory;
+mod processor;
+mod rom;
+mod runtime;
+mod scheduler;
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -54,10 +57,4 @@ fn main() {
             PlatformRuntime::<VulkanRenderingRuntime>::launch_gui(rom_manager);
         }
     }
-
-    GLOBAL_CONFIG
-        .read()
-        .unwrap()
-        .save()
-        .expect("Failed to save config");
 }

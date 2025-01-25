@@ -1,5 +1,5 @@
 use crate::rom::{id::RomId, system::GameSystem};
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Subcommand, ValueEnum};
 use std::{error::Error, path::PathBuf, str::FromStr};
 
 pub mod import;

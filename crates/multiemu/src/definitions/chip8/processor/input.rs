@@ -1,8 +1,14 @@
-use crate::input::{keyboard::KeyboardInput, Input};
+use crate::{
+    component::input::EmulatedGamepadTypeId,
+    input::{keyboard::KeyboardInput, Input},
+};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+
+pub const CHIP8_KEYPAD_GAMEPAD_TYPE: EmulatedGamepadTypeId = EmulatedGamepadTypeId::new("Chip8 Keypad");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Chip8KeyCode(pub u8);
+pub(super) struct Chip8KeyCode(pub u8);
 
 impl TryFrom<Input> for Chip8KeyCode {
     type Error = ();
@@ -54,4 +60,52 @@ impl TryFrom<Chip8KeyCode> for Input {
             _ => Err(()),
         }
     }
+}
+
+pub(super) fn default_bindings() -> HashMap<Input, Input> {
+    HashMap::from_iter([
+        // Keyboard mappings
+        (
+            Input::Keyboard(KeyboardInput::Digit1),
+            Input::Keyboard(KeyboardInput::Numpad1),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::Digit2),
+            Input::Keyboard(KeyboardInput::Numpad2),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::Digit3),
+            Input::Keyboard(KeyboardInput::Numpad3),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::Digit4),
+            Input::Keyboard(KeyboardInput::KeyC),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyQ),
+            Input::Keyboard(KeyboardInput::Numpad4),
+        ),
+    ])
+}
+
+pub(super) fn present_inputs() -> HashSet<Input> {
+    HashSet::from_iter([
+        // Interpreting the numbers on the chip8 keypad as "numpad"
+        Input::Keyboard(KeyboardInput::Numpad1),
+        Input::Keyboard(KeyboardInput::Numpad2),
+        Input::Keyboard(KeyboardInput::Numpad3),
+        Input::Keyboard(KeyboardInput::KeyC),
+        Input::Keyboard(KeyboardInput::Numpad4),
+        Input::Keyboard(KeyboardInput::Numpad5),
+        Input::Keyboard(KeyboardInput::Numpad6),
+        Input::Keyboard(KeyboardInput::KeyD),
+        Input::Keyboard(KeyboardInput::Numpad7),
+        Input::Keyboard(KeyboardInput::Numpad8),
+        Input::Keyboard(KeyboardInput::Numpad9),
+        Input::Keyboard(KeyboardInput::KeyE),
+        Input::Keyboard(KeyboardInput::KeyA),
+        Input::Keyboard(KeyboardInput::Numpad0),
+        Input::Keyboard(KeyboardInput::KeyB),
+        Input::Keyboard(KeyboardInput::KeyF),
+    ])
 }

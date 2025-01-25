@@ -3,6 +3,7 @@ use dashmap::DashMap;
 use std::{
     collections::HashMap,
     error::Error,
+    fmt::Debug,
     fs::{create_dir_all, read_dir, File},
     path::{Path, PathBuf},
     sync::LazyLock,
@@ -17,6 +18,13 @@ static DATABASE_MODELS: LazyLock<native_db::Models> = LazyLock::new(|| {
 pub struct RomManager {
     pub rom_information: native_db::Database<'static>,
     pub rom_paths: DashMap<RomId, PathBuf>,
+}
+
+// native_db databases don't implement debug
+impl Debug for RomManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RomManager")
+    }
 }
 
 impl RomManager {
@@ -36,7 +44,10 @@ impl RomManager {
         })
     }
 
-    pub fn load_database(&self, path: impl AsRef<Path>) -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub fn load_database(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let path = path.as_ref();
 
         if !path.is_file() {

@@ -5,26 +5,17 @@ use crate::{
         schedulable::SchedulableComponent,
         Component, ComponentId, FromConfig,
     },
-    input::{
-        gamepad::GamepadInput,
-        keyboard::KeyboardInput,
-        manager::{GamepadState, InputManager},
-        GamepadPort, Input,
-    },
+    input::{manager::InputManager, EmulatedGamepadId},
     machine::ComponentBuilder,
     memory::MemoryTranslationTable,
 };
 use arrayvec::ArrayVec;
 use decode::decode_instruction;
-use input::Chip8KeyCode;
+use input::{default_bindings, present_inputs, Chip8KeyCode, CHIP8_KEYPAD_GAMEPAD_TYPE};
 use instruction::Register;
 use num::rational::Ratio;
 use serde::{Deserialize, Serialize};
-use std::{
-    borrow::Cow,
-    collections::HashSet,
-    sync::{Arc, Mutex, OnceLock},
-};
+use std::sync::{Arc, Mutex, OnceLock};
 
 mod decode;
 mod input;
@@ -72,12 +63,14 @@ pub struct Chip8ProcessorConfig {
     pub timer: ComponentId,
 }
 
+#[derive(Debug)]
 pub struct ProcessorState {
     stack: ArrayVec<u16, 16>,
     registers: Chip8ProcessorRegisters,
     execution_state: ExecutionState,
 }
 
+#[derive(Debug)]
 /// FIXME: This complexity is insane
 pub struct Chip8Processor {
     /// Configuration this processor was created with
@@ -93,7 +86,7 @@ pub struct Chip8Processor {
     /// memory translation table
     memory_translation_table: OnceLock<Arc<MemoryTranslationTable>>,
     /// input manager + port for our keypad
-    input_manager: OnceLock<(Arc<InputManager>, GamepadPort)>,
+    input_manager: OnceLock<(Arc<InputManager>, EmulatedGamepadId)>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -133,7 +126,9 @@ impl Component for Chip8Processor {
     }
 
     fn set_memory_translation_table(&self, memory_translation_table: Arc<MemoryTranslationTable>) {
-        let _ = self.memory_translation_table.set(memory_translation_table);
+        self.memory_translation_table
+            .set(memory_translation_table)
+            .unwrap();
     }
 }
 
@@ -170,34 +165,33 @@ impl FromConfig for Chip8Processor {
                 input_manager: OnceLock::default(),
             })
             .set_schedulable(frequency, [], [])
-            .set_input([Cow::Owned(EmulatedGamepadMetadata {
-                name: "Chip8 Keypad".into(),
-                inputs: HashSet::from_iter([
-                    Input::Keyboard(KeyboardInput::Numpad1),
-                    Input::Keyboard(KeyboardInput::Numpad2),
-                    Input::Keyboard(KeyboardInput::Numpad3),
-                    Input::Keyboard(KeyboardInput::KeyC),
-                    Input::Keyboard(KeyboardInput::Numpad4),
-                    Input::Keyboard(KeyboardInput::Numpad5),
-                    Input::Keyboard(KeyboardInput::Numpad6),
-                    Input::Keyboard(KeyboardInput::KeyD),
-                    Input::Keyboard(KeyboardInput::Numpad7),
-                    Input::Keyboard(KeyboardInput::Numpad8),
-                    Input::Keyboard(KeyboardInput::Numpad9),
-                    Input::Keyboard(KeyboardInput::KeyE),
-                    Input::Keyboard(KeyboardInput::KeyA),
-                    Input::Keyboard(KeyboardInput::Numpad0),
-                    Input::Keyboard(KeyboardInput::KeyB),
-                    Input::Keyboard(KeyboardInput::KeyF),
-                ]),
-            })]);
+            .set_input(
+                [(
+                    CHIP8_KEYPAD_GAMEPAD_TYPE,
+                    EmulatedGamepadMetadata {
+                        present_inputs: present_inputs(),
+                        default_bindings: default_bindings(),
+                    },
+                )],
+                [CHIP8_KEYPAD_GAMEPAD_TYPE],
+            );
     }
 }
 
 impl InputComponent for Chip8Processor {
-    fn set_input_manager(&self, input_manager: Arc<InputManager>, gamepad_ports: &[GamepadPort]) {
+    fn set_input_manager(
+        &self,
+        input_manager: Arc<InputManager>,
+        gamepad_ports: &[EmulatedGamepadId],
+    ) {
         self.input_manager
-            .set((input_manager, gamepad_ports[0]))
+            .set((
+                input_manager,
+                gamepad_ports
+                    .get(0)
+                    .copied()
+                    .expect("Input manager did not allocate our gamepad"),
+            ))
             .expect("Input manager set multiple times");
     }
 }
@@ -228,14 +222,14 @@ impl SchedulableComponent for Chip8Processor {
                 ExecutionState::AwaitingKeyPress { register } => {
                     // FIXME: A allocation every cycle isn't a good idea
                     let mut pressed = Vec::new();
-                    let (input_manager, gamepad_port) = self.input_manager.get().unwrap();
+                    let (input_manager, gamepad_id) = self.input_manager.get().unwrap();
 
                     // Go through every chip8 key
                     for key in 0x0..0xf {
                         let keycode = Chip8KeyCode(key);
 
                         if input_manager
-                            .get_input(*gamepad_port, keycode.try_into().unwrap())
+                            .get_input(*gamepad_id, keycode.try_into().unwrap())
                             .as_digital()
                         {
                             pressed.push(keycode);
@@ -250,11 +244,11 @@ impl SchedulableComponent for Chip8Processor {
                     }
                 }
                 ExecutionState::AwaitingKeyRelease { register, keys } => {
-                    let (input_manager, gamepad_port) = self.input_manager.get().unwrap();
+                    let (input_manager, gamepad_id) = self.input_manager.get().unwrap();
 
                     for key_code in keys {
                         if !input_manager
-                            .get_input(*gamepad_port, (*key_code).try_into().unwrap())
+                            .get_input(*gamepad_id, (*key_code).try_into().unwrap())
                             .as_digital()
                         {
                             let register = *register;

@@ -14,7 +14,7 @@ use nalgebra::Point2;
 use rand::{thread_rng, Rng};
 
 impl Chip8Processor {
-    pub fn interpret_instruction(
+    pub(super) fn interpret_instruction(
         &self,
         state: &mut ProcessorState,
         instruction: Chip8InstructionSet,

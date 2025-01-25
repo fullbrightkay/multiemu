@@ -1,4 +1,3 @@
-use crate::rom::{id::RomId, system::GameSystem};
 use clap::{Parser, Subcommand, ValueEnum};
 use database::{
     native::{database_native_import, NativeAction},
@@ -6,7 +5,7 @@ use database::{
     DatabaseAction,
 };
 use rom::{import::rom_import, run::rom_run, RomAction};
-use std::{error::Error, path::PathBuf};
+use std::error::Error;
 
 pub mod database;
 pub mod rom;

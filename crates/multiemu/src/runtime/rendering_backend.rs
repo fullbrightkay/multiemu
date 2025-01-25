@@ -1,14 +1,8 @@
-use crate::{
-    component::{display::DisplayComponent, ComponentId},
-    machine::Machine,
-};
+use crate::machine::Machine;
 use egui::FullOutput;
-use nalgebra::{DMatrix, DMatrixView};
+use nalgebra::DMatrix;
 use palette::Srgba;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 pub enum DisplayComponentInitializationData {
     Software,

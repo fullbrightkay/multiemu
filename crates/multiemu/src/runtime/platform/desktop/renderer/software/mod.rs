@@ -1,5 +1,5 @@
 use crate::{
-    component::{display::DisplayComponent, ComponentId},
+    component::display::DisplayComponent,
     gui::software_rasterizer::SoftwareEguiRenderer,
     machine::Machine,
     runtime::rendering_backend::{
@@ -9,7 +9,7 @@ use crate::{
 use nalgebra::{DMatrixViewMut, Vector2};
 use palette::Srgba;
 use softbuffer::{Context, Surface};
-use std::{collections::HashMap, num::NonZero, sync::Arc};
+use std::{num::NonZero, sync::Arc};
 use winit::window::Window;
 
 pub struct SoftwareRenderingRuntime {

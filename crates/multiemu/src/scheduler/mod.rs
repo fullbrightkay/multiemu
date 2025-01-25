@@ -1,12 +1,11 @@
+use crate::component::ComponentId;
 use crate::machine::ComponentTable;
-use crate::{component::ComponentId, machine::Machine};
 use framerate_tracker::FramerateTracker;
 use itertools::Itertools;
 use num::ToPrimitive;
-use num::{integer::lcm, rational::Ratio, FromPrimitive, Integer};
-use palette::white_point::E;
+use num::{integer::lcm, rational::Ratio, Integer};
 use rangemap::RangeMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     time::{Duration, Instant},
@@ -14,10 +13,13 @@ use std::{
 
 pub mod framerate_tracker;
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Scheduler {
     current_tick: u64,
     rollover_tick: u64,
     tick_real_time: Ratio<u64>,
+    // This is a platform specific thing so do not serialize it
+    #[serde(skip)]
     framerate_tracker: FramerateTracker,
     // Stores precomputed periods for each component
     schedule: RangeMap<u64, Vec<ComponentId>>,
@@ -37,7 +39,7 @@ impl Scheduler {
             .collect();
 
         for (component, component_timings) in component_infos.iter() {
-            tracing::info!(
+            tracing::debug!(
                 "Component {:?} will run {} times per second",
                 component,
                 component_timings

@@ -12,13 +12,14 @@ pub mod memory;
 pub mod schedulable;
 
 // Basic supertrait for all components
-pub trait Component: Any + Send + Sync + DowncastSync {
+pub trait Component: Any + Debug + Send + Sync + DowncastSync {
     fn reset(&self) {}
     fn save_snapshot(&self) -> rmpv::Value {
         rmpv::Value::Nil
     }
     fn load_snapshot(&self, _snapshot: rmpv::Value) {}
-    fn set_memory_translation_table(&self, memory_translation_table: Arc<MemoryTranslationTable>) {}
+    fn set_memory_translation_table(&self, _memory_translation_table: Arc<MemoryTranslationTable>) {
+    }
 }
 
 // An initializable component

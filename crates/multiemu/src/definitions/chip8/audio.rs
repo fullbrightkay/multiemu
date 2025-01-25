@@ -6,6 +6,7 @@ use crate::{
 };
 use num::rational::Ratio;
 
+#[derive(Debug)]
 pub struct Chip8Audio {
     // The CPU will set this according to what the program wants
     sound_timer: Mutex<u8>,

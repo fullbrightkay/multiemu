@@ -2,7 +2,7 @@ use super::instruction::{Chip8InstructionSet, InstructionSetChip8, Register};
 use bitvec::{field::BitField, prelude::Msb0, view::BitView};
 use nalgebra::Point2;
 
-pub fn decode_instruction(
+pub(super) fn decode_instruction(
     instruction: [u8; 2],
 ) -> Result<Chip8InstructionSet, Box<dyn std::error::Error>> {
     let instruction_view = instruction.view_bits::<Msb0>();

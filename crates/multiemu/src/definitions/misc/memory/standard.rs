@@ -67,6 +67,7 @@ pub struct StandardMemorySnapshot {
     pub memory: Vec<u8>,
 }
 
+#[derive(Debug)]
 pub struct StandardMemory {
     config: StandardMemoryConfig,
     buffer: Vec<Mutex<[u8; CHUNK_SIZE]>>,
@@ -368,14 +369,14 @@ impl StandardMemory {
 
 #[cfg(test)]
 mod test {
-    use crate::machine::Machine;
+    use crate::{machine::Machine, rom::system::GameSystem};
 
     use super::*;
 
     #[test]
     fn basic_read() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
-        let machine = Machine::build(rom_manager)
+        let machine = Machine::build(GameSystem::Unknown, rom_manager)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,
@@ -394,7 +395,7 @@ mod test {
     #[test]
     fn basic_write() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
-        let machine = Machine::build(rom_manager)
+        let machine = Machine::build(GameSystem::Unknown, rom_manager)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,
@@ -412,7 +413,7 @@ mod test {
     #[test]
     fn basic_read_write() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
-        let machine = Machine::build(rom_manager)
+        let machine = Machine::build(GameSystem::Unknown, rom_manager)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,
@@ -433,7 +434,7 @@ mod test {
     #[test]
     fn extensive() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
-        let machine = Machine::build(rom_manager)
+        let machine = Machine::build(GameSystem::Unknown, rom_manager)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,

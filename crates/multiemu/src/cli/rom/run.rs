@@ -2,7 +2,7 @@ use crate::{
     config::{GraphicsSettings, GLOBAL_CONFIG},
     rom::{id::RomId, info::RomInfo, manager::RomManager, system::GameSystem}, runtime::{launch::Runtime, platform::{PlatformRuntime, SoftwareRenderingRuntime}},
 };
-use std::{error::Error, fs::{create_dir_all, File}, path::PathBuf, sync::Arc};
+use std::{error::Error, fs::{create_dir_all, File}, sync::Arc};
 use super::RomSpecification;
 
 pub fn rom_run(

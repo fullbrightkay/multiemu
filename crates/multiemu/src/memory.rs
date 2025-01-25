@@ -1,9 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
-
+use crate::component::{memory::MemoryComponent, ComponentId};
 use arrayvec::ArrayVec;
 use rangemap::RangeMap;
-
-use crate::component::{memory::MemoryComponent, ComponentId};
+use std::{collections::HashMap, sync::Arc};
 
 pub const VALID_ACCESS_SIZES: &[usize] = &[1, 2, 4, 8];
 
@@ -48,6 +46,7 @@ const MAX_ACCESS_SIZE: u8 = const {
     max as u8
 };
 
+#[derive(Debug)]
 pub struct MemoryTranslationTable {
     mappings: RangeMap<usize, ComponentId>,
     components: HashMap<ComponentId, Arc<dyn MemoryComponent>>,
@@ -64,6 +63,9 @@ impl MemoryTranslationTable {
         }
     }
 
+    /// Step through the memory translation table to fill the buffer with data
+    /// 
+    /// Contents of the buffer upon failure are usually component specific
     pub fn read(&self, address: usize, buffer: &mut [u8]) {
         debug_assert!(
             VALID_ACCESS_SIZES.contains(&buffer.len()),
@@ -106,6 +108,10 @@ impl MemoryTranslationTable {
         }
     }
 
+
+    /// Step through the memory translation table to give a set of components the buffer
+    /// 
+    /// Contents of the buffer upon failure are usually component specific
     pub fn write(&self, address: usize, buffer: &[u8]) {
         debug_assert!(
             VALID_ACCESS_SIZES.contains(&buffer.len()),
@@ -148,5 +154,46 @@ impl MemoryTranslationTable {
         }
     }
 
-    pub fn preview(&self, address: usize, buffer: &mut [u8]) {}
+    pub fn preview(&self, address: usize, buffer: &mut [u8]) {
+        debug_assert!(
+            VALID_ACCESS_SIZES.contains(&buffer.len()),
+            "Invalid memory access size {}",
+            buffer.len()
+        );
+
+        let mut needed_accesses =
+            ArrayVec::<_, { MAX_ACCESS_SIZE as usize }>::from_iter([(address, 0..buffer.len())]);
+
+        while let Some((address, buffer_subrange)) = needed_accesses.pop() {
+            let accessing_range =
+                (buffer_subrange.start + address)..(buffer_subrange.end + address);
+
+            for (component_assignment_range, component_id) in
+                self.mappings.overlapping(accessing_range.clone())
+            {
+                let mut errors = RangeMap::default();
+                let component = self.components.get(component_id).unwrap();
+
+                let overlap_start = accessing_range.start.max(component_assignment_range.start);
+                let overlap_end = accessing_range.end.min(component_assignment_range.end);
+                let overlap = overlap_start..overlap_end;
+
+                component.preview_memory(
+                    overlap.start,
+                    &mut buffer[buffer_subrange.clone()],
+                    &mut errors,
+                );
+
+                for (range, error) in errors {
+                    match error {
+                        PreviewMemoryRecord::Denied => todo!(),
+                        PreviewMemoryRecord::Redirect { address } => {
+                            needed_accesses.push((address, range));
+                        }
+                        PreviewMemoryRecord::PreviewImpossible => todo!(),
+                    }
+                }
+            }
+        }
+    }
 }

@@ -3,7 +3,11 @@ use super::misc::memory::standard::{
 };
 use crate::{
     machine::Machine,
-    rom::{id::RomId, manager::RomManager},
+    rom::{
+        id::RomId,
+        manager::RomManager,
+        system::{GameSystem, OtherSystem},
+    },
 };
 use audio::Chip8Audio;
 use display::{Chip8Display, Chip8DisplayConfig};
@@ -17,9 +21,8 @@ pub mod display;
 pub mod processor;
 pub mod timer;
 
-#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Chip8Kind {
+enum Chip8Kind {
     Chip8,
     Chip8x,
     Chip48,
@@ -144,7 +147,7 @@ const CHIP8_FONT: [[u8; 5]; 16] = [
 ];
 
 pub fn chip8_machine(user_specified_roms: Vec<RomId>, rom_manager: Arc<RomManager>) -> Machine {
-    let machine = Machine::build(rom_manager);
+    let machine = Machine::build(GameSystem::Other(OtherSystem::Chip8), rom_manager);
 
     let (machine, audio_component_id) = machine.default_component::<Chip8Audio>();
     let (machine, timer_component_id) = machine.default_component::<Chip8Timer>();

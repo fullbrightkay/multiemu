@@ -1,4 +1,5 @@
 use crate::{
+    component::input::EmulatedGamepadTypeId,
     input::{
         hotkey::{Hotkey, DEFAULT_HOTKEYS},
         Input,
@@ -10,6 +11,7 @@ use ron::ser::PrettyConfig;
 use serde::{Deserialize, Serialize};
 use serde_inline_default::serde_inline_default;
 use serde_with::serde_as;
+use serde_with::DefaultOnError;
 use std::{
     collections::BTreeSet,
     sync::{LazyLock, RwLock},
@@ -21,6 +23,7 @@ use std::{
 };
 use strum::{Display, EnumIter};
 
+/// The directory where we store our runtime files is platform specific
 #[cfg(platform_desktop)]
 pub static STORAGE_DIRECTORY: LazyLock<PathBuf> =
     LazyLock::new(|| dirs::data_dir().unwrap().join("multiemu"));
@@ -40,8 +43,8 @@ pub enum GraphicsSettings {
 #[allow(clippy::derivable_impls)]
 impl Default for GraphicsSettings {
     fn default() -> Self {
-        #[cfg(graphics_vulkan)]
-        GraphicsSettings::Vulkan
+        // TODO: Once the ui rendering backend for vulkan is done, enable it here
+        GraphicsSettings::Software
     }
 }
 
@@ -50,10 +53,12 @@ impl Default for GraphicsSettings {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GlobalConfig {
     #[serde(default)]
-    pub controller_configs: IndexMap<GameSystem, IndexMap<Input, Input>>,
+    pub gamepad_configs:
+        IndexMap<GameSystem, IndexMap<EmulatedGamepadTypeId, IndexMap<Input, Input>>>,
     #[serde_inline_default(DEFAULT_HOTKEYS.clone())]
     pub hotkeys: IndexMap<BTreeSet<Input>, Hotkey>,
     #[serde(default)]
+    #[serde_as(deserialize_as = "DefaultOnError")]
     pub graphics_setting: GraphicsSettings,
     #[serde_inline_default(true)]
     pub vsync: bool,
@@ -74,7 +79,7 @@ pub struct GlobalConfig {
 impl Default for GlobalConfig {
     fn default() -> Self {
         Self {
-            controller_configs: Default::default(),
+            gamepad_configs: Default::default(),
             hotkeys: DEFAULT_HOTKEYS.clone(),
             graphics_setting: GraphicsSettings::default(),
             vsync: true,

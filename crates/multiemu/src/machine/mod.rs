@@ -1,28 +1,27 @@
 use crate::{
     component::{
         display::DisplayComponent,
-        input::{EmulatedGamepadMetadata, InputComponent},
+        input::{EmulatedGamepadMetadata, EmulatedGamepadTypeId, InputComponent},
         memory::MemoryComponent,
         schedulable::SchedulableComponent,
         Component, ComponentId, FromConfig,
     },
-    input::{manager::InputManager, GamepadPort},
+    input::manager::InputManager,
     memory::MemoryTranslationTable,
-    rom::manager::RomManager,
-    runtime::rendering_backend::DisplayComponentFramebuffer,
+    rom::{manager::RomManager, system::GameSystem},
     scheduler::Scheduler,
 };
 use downcast_rs::DowncastSync;
 use num::rational::Ratio;
-use rangemap::{RangeMap, RangeSet};
+use rangemap::RangeSet;
 use std::{
-    borrow::Cow,
     collections::{HashMap, HashSet},
     ops::Range,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 pub mod from_system;
+pub mod serialization;
 
 pub struct SchedulableComponentInfo {
     pub component: Arc<dyn SchedulableComponent>,
@@ -37,7 +36,8 @@ pub struct DisplayComponentInfo {
 
 pub struct InputComponentInfo {
     pub component: Arc<dyn InputComponent>,
-    pub gamepad_ports: Vec<Cow<'static, EmulatedGamepadMetadata>>,
+    pub registered_gamepad_types: HashMap<EmulatedGamepadTypeId, EmulatedGamepadMetadata>,
+    pub registered_gamepads: Vec<EmulatedGamepadTypeId>,
 }
 
 pub struct MemoryComponentInfo {
@@ -58,16 +58,18 @@ pub struct Machine {
     pub memory_translation_table: Arc<MemoryTranslationTable>,
     pub components: HashMap<ComponentId, ComponentTable>,
     pub input_manager: Arc<InputManager>,
+    pub system: GameSystem,
     scheduler: Scheduler,
 }
 
 impl Machine {
-    pub fn build(rom_manager: Arc<RomManager>) -> MachineBuilder {
+    pub fn build(game_system: GameSystem, rom_manager: Arc<RomManager>) -> MachineBuilder {
         MachineBuilder {
             current_component_index: ComponentId(0),
             components: HashMap::default(),
             rom_manager,
-            input_manager: Arc::default(),
+            input_manager: InputManager::default(),
+            system: game_system,
         }
     }
 
@@ -85,8 +87,9 @@ impl Machine {
 pub struct MachineBuilder {
     current_component_index: ComponentId,
     components: HashMap<ComponentId, ComponentTable>,
+    input_manager: InputManager,
     pub rom_manager: Arc<RomManager>,
-    pub input_manager: Arc<InputManager>,
+    pub system: GameSystem,
 }
 
 impl MachineBuilder {
@@ -134,7 +137,7 @@ impl MachineBuilder {
             .ok()
     }
 
-    pub fn build(self) -> Machine {
+    pub fn build(mut self) -> Machine {
         let memory_translation_table = Arc::new(MemoryTranslationTable::new(
             // Extract mappings
             self.components
@@ -163,12 +166,62 @@ impl MachineBuilder {
                 .collect(),
         ));
 
+        // Setup emulated gamepad types
+        for (emulated_gamepad_type_id, emulated_gamepad_metadata) in self
+            .components
+            .values()
+            .filter_map(|component_table| component_table.as_input.as_ref())
+            .flat_map(|input_component_info| input_component_info.registered_gamepad_types.iter())
+        {
+            tracing::debug!(
+                "Registering a gamepad {} with definition {:?}",
+                emulated_gamepad_type_id,
+                emulated_gamepad_metadata
+            );
+
+            self.input_manager.register_emulated_gamepad_type(
+                emulated_gamepad_type_id.clone(),
+                emulated_gamepad_metadata.clone(),
+            );
+        }
+
+        let mut emulated_gamepad_ids: HashMap<_, Vec<_>> = HashMap::default();
+
+        // Setup emulated gamepads
+        for (raw_gamepad_id, (component_id, gamepad_type_id)) in self
+            .components
+            .iter()
+            .filter_map(|(component_id, component_table)| {
+                if let Some(input_component_info) = &component_table.as_input {
+                    return Some((component_id, input_component_info));
+                }
+
+                None
+            })
+            .flat_map(|(component_id, input_component_info)| {
+                input_component_info
+                    .registered_gamepads
+                    .iter()
+                    .map(|gamepad_type_id| (*component_id, gamepad_type_id))
+            })
+            .enumerate()
+        {
+            let emulated_gamepad_id = raw_gamepad_id.try_into().expect("Too many gamepads!");
+            emulated_gamepad_ids
+                .entry(component_id)
+                .or_default()
+                .push(emulated_gamepad_id);
+            self.input_manager
+                .register_emulated_gamepad(emulated_gamepad_id, gamepad_type_id.clone());
+        }
+
         let machine = Machine {
             scheduler: Scheduler::new(&self.components),
             rom_manager: self.rom_manager,
             memory_translation_table,
             components: self.components,
-            input_manager: self.input_manager,
+            input_manager: Arc::new(self.input_manager),
+            system: self.system,
         };
 
         // Set the memory translation tables for everything
@@ -181,45 +234,7 @@ impl MachineBuilder {
         }
 
         // Set up input
-
-        let mut gamepad_port_mappings: HashMap<_, Vec<_>> = HashMap::new();
-
-        for (component_id, gamepad_port, metadata) in machine
-            .components
-            .iter()
-            // Pull out the input component infomation
-            .filter_map(|(component_id, component_table)| {
-                component_table
-                    .as_input
-                    .as_ref()
-                    .map(|input_component_info| (component_id, input_component_info))
-            })
-            // Pull out by every port
-            .flat_map(|(component_id, input_component_info)| {
-                input_component_info
-                    .gamepad_ports
-                    .iter()
-                    .map(move |metadata| (component_id, metadata))
-            })
-            .enumerate()
-            .map(|(gamepad_port_raw, (component_id, metadata))| {
-                (
-                    component_id,
-                    GamepadPort::try_from(gamepad_port_raw).expect("Too many registered inputa"),
-                    metadata,
-                )
-            })
-        {
-            machine
-                .input_manager
-                .register_gamepad_port(gamepad_port, metadata.clone());
-            gamepad_port_mappings
-                .entry(*component_id)
-                .or_default()
-                .push(gamepad_port);
-        }
-
-        for (component_id, gamepad_ports) in gamepad_port_mappings {
+        for (component_id, gamepad_ids) in emulated_gamepad_ids {
             machine
                 .components
                 .get(&component_id)
@@ -228,7 +243,7 @@ impl MachineBuilder {
                 .as_ref()
                 .unwrap()
                 .component
-                .set_input_manager(machine.input_manager.clone(), &gamepad_ports);
+                .set_input_manager(machine.input_manager.clone(), &gamepad_ids);
         }
 
         machine
@@ -299,14 +314,18 @@ impl<C: Component> ComponentBuilder<C> {
 
     pub fn set_input(
         &mut self,
-        gamepad_ports: impl IntoIterator<Item = Cow<'static, EmulatedGamepadMetadata>>,
+        emulated_gamepad_types: impl IntoIterator<
+            Item = (EmulatedGamepadTypeId, EmulatedGamepadMetadata),
+        >,
+        emulated_gamepads: impl IntoIterator<Item = EmulatedGamepadTypeId>,
     ) -> &mut Self
     where
         C: InputComponent,
     {
         self.as_input = self.component.clone().map(|c| InputComponentInfo {
             component: c,
-            gamepad_ports: gamepad_ports.into_iter().collect(),
+            registered_gamepad_types: emulated_gamepad_types.into_iter().collect(),
+            registered_gamepads: emulated_gamepads.into_iter().collect(),
         });
 
         self

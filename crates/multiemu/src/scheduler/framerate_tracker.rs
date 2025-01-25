@@ -1,6 +1,7 @@
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 use std::time::{Duration, Instant};
 
+#[derive(Clone)]
 pub struct FramerateTracker {
     last_frame: Instant,
     last_frame_timings: ConstGenericRingBuffer<Duration, 8>,

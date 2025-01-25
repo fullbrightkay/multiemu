@@ -31,6 +31,7 @@ impl Default for RomMemoryConfig {
     }
 }
 
+#[derive(Debug)]
 pub struct RomMemory {
     config: RomMemoryConfig,
     rom: Mutex<File>,

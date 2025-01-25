@@ -1,5 +1,5 @@
 use crate::{
-    component::{display::DisplayComponent, ComponentId},
+    component::display::DisplayComponent,
     config::GLOBAL_CONFIG,
     machine::Machine,
     runtime::rendering_backend::{
@@ -7,7 +7,7 @@ use crate::{
     },
 };
 use nalgebra::Vector2;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
