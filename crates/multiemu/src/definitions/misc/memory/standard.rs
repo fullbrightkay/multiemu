@@ -26,8 +26,8 @@ pub enum StandardMemoryInitialContents {
         value: u8,
     },
     Array {
-        value: Cow<'static, [u8]>,
         offset: usize,
+        value: Cow<'static, [u8]>,
     },
     Rom {
         rom_id: RomId,
@@ -116,7 +116,7 @@ impl FromConfig for StandardMemory {
                 .map(Mutex::new),
         );
         let assigned_range = config.assigned_range.clone();
-        let assigned_address_space = config.assigned_address_space.clone();
+        let assigned_address_space = config.assigned_address_space;
 
         let me = Self {
             config,
@@ -227,8 +227,6 @@ impl MemoryComponent for StandardMemory {
             errors.insert(address..address + buffer.len(), WriteMemoryRecord::Denied);
         }
 
-        let requested_range = address - self.config.assigned_range.start
-            ..address - self.config.assigned_range.start + buffer.len();
         let invalid_before_range = address..self.config.assigned_range.start;
         let invalid_after_range = self.config.assigned_range.end..address + buffer.len();
 
@@ -249,6 +247,17 @@ impl MemoryComponent for StandardMemory {
         if !errors.is_empty() {
             return;
         }
+
+        // Shoved off in a helper function to prevent duplicated logic
+        self.write_internal(address, buffer);
+    }
+}
+
+impl StandardMemory {
+    /// Writes unchecked internally
+    fn write_internal(&self, address: usize, buffer: &[u8]) {
+        let requested_range = address - self.config.assigned_range.start
+            ..address - self.config.assigned_range.start + buffer.len();
 
         let start_chunk = requested_range.start / CHUNK_SIZE;
         let end_chunk = requested_range.end.div_ceil(CHUNK_SIZE);
@@ -286,11 +295,9 @@ impl MemoryComponent for StandardMemory {
             }
         }
     }
-}
 
-impl StandardMemory {
     fn initialize_buffer(&self) {
-        let buffer_size = self.config.assigned_range.len();
+        let internal_buffer_size = self.config.assigned_range.len();
 
         // HACK: This overfills the buffer for ease of programming, but its ok because the actual mmu doesn't allow accesses out at runtime
         match &self.config.initial_contents {
@@ -305,37 +312,7 @@ impl StandardMemory {
                 });
             }
             StandardMemoryInitialContents::Array { value, offset } => {
-                // Adjust the offset relatively to the local buffer
-                let adjusted_offset = offset - self.config.assigned_range.start;
-                // Get the start chunk
-                let start_chunk = adjusted_offset / CHUNK_SIZE;
-                let end_chunk = (adjusted_offset + value.len()).min(buffer_size) / CHUNK_SIZE;
-
-                // Shut up
-                #[allow(clippy::needless_range_loop)]
-                for chunk_index in start_chunk..end_chunk {
-                    let chunk_start = if chunk_index == start_chunk {
-                        adjusted_offset % CHUNK_SIZE
-                    } else {
-                        0
-                    };
-
-                    let chunk_end = if chunk_index == end_chunk {
-                        (adjusted_offset + value.len()) % CHUNK_SIZE
-                    } else {
-                        CHUNK_SIZE
-                    };
-
-                    let copy_start = chunk_index * CHUNK_SIZE;
-                    let copy_end = (chunk_index + 1) * CHUNK_SIZE;
-
-                    let value_start = copy_start - adjusted_offset;
-                    let value_end = (copy_end - adjusted_offset).min(value.len());
-
-                    let chunk = &self.buffer[chunk_index];
-                    chunk.lock().unwrap()[chunk_start..chunk_end]
-                        .copy_from_slice(&value[value_start..value_end]);
-                }
+                self.write_internal(*offset, value);
             }
             StandardMemoryInitialContents::Rom { rom_id, offset } => {
                 let mut rom_file = self
@@ -343,27 +320,24 @@ impl StandardMemory {
                     .open(*rom_id, RomRequirement::Required)
                     .unwrap();
 
-                let adjusted_offset = offset - self.config.assigned_range.start;
-                let mut rom_index = adjusted_offset;
+                let mut total_read = 0;
+                let mut buffer = [0; 4096];
 
-                for chunk in self.buffer.iter() {
-                    let chunk_start = rom_index % CHUNK_SIZE;
-                    let chunk_end = (rom_index + CHUNK_SIZE).min(buffer_size);
+                while total_read < internal_buffer_size {
+                    let remaining_space = internal_buffer_size - total_read;
+                    let amount_to_read = remaining_space.min(buffer.len());
+                    let amount = rom_file
+                        .read(&mut buffer[..amount_to_read])
+                        .expect("Could not read rom");
 
-                    let read_len = chunk_end - rom_index;
-                    let mut temp_buffer = vec![0; read_len];
-                    let bytes_read = rom_file.read(&mut temp_buffer).unwrap();
-                    if bytes_read == 0 {
+                    if amount == 0 {
                         break;
                     }
 
-                    chunk.lock().unwrap()[chunk_start..chunk_start + bytes_read]
-                        .copy_from_slice(&temp_buffer[..bytes_read]);
+                    total_read += amount;
 
-                    rom_index += bytes_read;
-                    if rom_index >= buffer_size {
-                        break;
-                    }
+                    let write_size = remaining_space.min(amount);
+                    self.write_internal(*offset + total_read - amount, &buffer[..write_size]);
                 }
             }
         }
@@ -376,6 +350,49 @@ mod test {
     use crate::{machine::Machine, rom::system::GameSystem};
 
     const ADDRESS_SPACE: AddressSpaceId = 0;
+
+    #[test]
+    fn initialization() {
+        let rom_manager = Arc::new(RomManager::new(None).unwrap());
+        let machine = Machine::build(GameSystem::Unknown, rom_manager.clone())
+            .build_component::<StandardMemory>(StandardMemoryConfig {
+                max_word_size: 8,
+                readable: true,
+                writable: true,
+                assigned_range: 0..4,
+                assigned_address_space: ADDRESS_SPACE,
+                initial_contents: StandardMemoryInitialContents::Value { value: 0xff },
+            })
+            .0
+            .build();
+        let mut buffer = [0; 4];
+
+        machine
+            .memory_translation_table
+            .read(0, &mut buffer, ADDRESS_SPACE);
+        assert_eq!(buffer, [0xff; 4]);
+
+        let machine = Machine::build(GameSystem::Unknown, rom_manager.clone())
+            .build_component::<StandardMemory>(StandardMemoryConfig {
+                max_word_size: 8,
+                readable: true,
+                writable: true,
+                assigned_range: 0..4,
+                assigned_address_space: ADDRESS_SPACE,
+                initial_contents: StandardMemoryInitialContents::Array {
+                    value: Cow::Borrowed(&[0xff; 4]),
+                    offset: 0,
+                },
+            })
+            .0
+            .build();
+        let mut buffer = [0; 4];
+
+        machine
+            .memory_translation_table
+            .read(0, &mut buffer, ADDRESS_SPACE);
+        assert_eq!(buffer, [0xff; 4]);
+    }
 
     #[test]
     fn basic_read() {
