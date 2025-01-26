@@ -205,11 +205,16 @@ impl SchedulableComponent for Chip8Processor {
             match &state.execution_state {
                 ExecutionState::Normal => {
                     let mut instruction = [0; 2];
-                    self.memory_translation_table.get().unwrap().read(
-                        state.registers.program as usize,
-                        &mut instruction,
-                        CHIP8_ADDRESS_SPACE_ID,
-                    );
+                    self.memory_translation_table
+                        .get()
+                        .unwrap()
+                        .read(
+                            state.registers.program as usize,
+                            &mut instruction,
+                            CHIP8_ADDRESS_SPACE_ID,
+                        )
+                        .unwrap();
+                    
                     let decompiled_instruction = decode_instruction(instruction).unwrap();
                     state.registers.program = state.registers.program.wrapping_add(2);
 

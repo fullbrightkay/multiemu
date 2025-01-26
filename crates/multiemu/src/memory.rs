@@ -2,8 +2,40 @@ use crate::component::{memory::MemoryComponent, ComponentId};
 use arrayvec::ArrayVec;
 use rangemap::RangeMap;
 use std::{collections::HashMap, sync::Arc};
+use thiserror::Error;
 
 pub const VALID_ACCESS_SIZES: &[usize] = &[1, 2, 4, 8];
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ReadMemoryOperationErrorFailureType {
+    Denied,
+    OutOfBus,
+}
+
+#[derive(Error, Debug)]
+#[error("Read operation failed: {0:#?}")]
+pub struct ReadMemoryOperationError(RangeMap<usize, ReadMemoryOperationErrorFailureType>);
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum WriteMemoryOperationErrorFailureType {
+    Denied,
+    OutOfBus,
+}
+
+#[derive(Error, Debug)]
+#[error("Write operation failed: {0:#?}")]
+pub struct WriteMemoryOperationError(RangeMap<usize, WriteMemoryOperationErrorFailureType>);
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum PreviewMemoryOperationErrorFailureType {
+    Denied,
+    OutOfBus,
+    Impossible,
+}
+
+#[derive(Error, Debug)]
+#[error("Preview operation failed (this really shouldn't be thrown): {0:#?}")]
+pub struct PreviewMemoryOperationError(RangeMap<usize, PreviewMemoryOperationErrorFailureType>);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ReadMemoryRecord {
@@ -30,7 +62,7 @@ pub enum PreviewMemoryRecord {
         address: usize,
     },
     // Memory here can't be read without an intense calculation or a state change
-    PreviewImpossible,
+    Impossible,
 }
 
 const MAX_ACCESS_SIZE: u8 = const {
@@ -75,7 +107,13 @@ impl MemoryTranslationTable {
     /// Step through the memory translation table to fill the buffer with data
     ///
     /// Contents of the buffer upon failure are usually component specific
-    pub fn read(&self, address: usize, buffer: &mut [u8], address_space: AddressSpaceId) {
+    #[inline]
+    pub fn read(
+        &self,
+        address: usize,
+        buffer: &mut [u8],
+        address_space: AddressSpaceId,
+    ) -> Result<(), ReadMemoryOperationError> {
         debug_assert!(
             VALID_ACCESS_SIZES.contains(&buffer.len()),
             "Invalid memory access size {}",
@@ -111,9 +149,14 @@ impl MemoryTranslationTable {
                     &mut errors,
                 );
 
+                let mut detected_errors = RangeMap::default();
+
                 for (range, error) in errors {
                     match error {
-                        ReadMemoryRecord::Denied => todo!(),
+                        ReadMemoryRecord::Denied => {
+                            detected_errors
+                                .insert(range, ReadMemoryOperationErrorFailureType::Denied);
+                        }
                         ReadMemoryRecord::Redirect {
                             address: redirect_address,
                         } => {
@@ -129,14 +172,26 @@ impl MemoryTranslationTable {
                         }
                     }
                 }
+
+                if !detected_errors.is_empty() {
+                    return Err(ReadMemoryOperationError(detected_errors));
+                }
             }
         }
+
+        Ok(())
     }
 
     /// Step through the memory translation table to give a set of components the buffer
     ///
     /// Contents of the buffer upon failure are usually component specific
-    pub fn write(&self, address: usize, buffer: &[u8], address_space: AddressSpaceId) {
+    #[inline]
+    pub fn write(
+        &self,
+        address: usize,
+        buffer: &[u8],
+        address_space: AddressSpaceId,
+    ) -> Result<(), WriteMemoryOperationError> {
         debug_assert!(
             VALID_ACCESS_SIZES.contains(&buffer.len()),
             "Invalid memory access size {}",
@@ -172,9 +227,14 @@ impl MemoryTranslationTable {
                     &mut errors,
                 );
 
+                let mut detected_errors = RangeMap::default();
+
                 for (range, error) in errors {
                     match error {
-                        WriteMemoryRecord::Denied => todo!(),
+                        WriteMemoryRecord::Denied => {
+                            detected_errors
+                                .insert(range, WriteMemoryOperationErrorFailureType::Denied);
+                        }
                         WriteMemoryRecord::Redirect {
                             address: redirect_address,
                         } => {
@@ -190,11 +250,23 @@ impl MemoryTranslationTable {
                         }
                     }
                 }
+
+                if !detected_errors.is_empty() {
+                    return Err(WriteMemoryOperationError(detected_errors));
+                }
             }
         }
+
+        Ok(())
     }
 
-    pub fn preview(&self, address: usize, buffer: &mut [u8], address_space: AddressSpaceId) {
+    #[inline]
+    pub fn preview(
+        &self,
+        address: usize,
+        buffer: &mut [u8],
+        address_space: AddressSpaceId,
+    ) -> Result<(), PreviewMemoryOperationError> {
         debug_assert!(
             VALID_ACCESS_SIZES.contains(&buffer.len()),
             "Invalid memory access size {}",
@@ -230,9 +302,14 @@ impl MemoryTranslationTable {
                     &mut errors,
                 );
 
+                let mut detected_errors = RangeMap::default();
+
                 for (range, error) in errors {
                     match error {
-                        PreviewMemoryRecord::Denied => todo!(),
+                        PreviewMemoryRecord::Denied => {
+                            detected_errors
+                                .insert(range, PreviewMemoryOperationErrorFailureType::Denied);
+                        }
                         PreviewMemoryRecord::Redirect {
                             address: redirect_address,
                         } => {
@@ -246,10 +323,19 @@ impl MemoryTranslationTable {
                                 (range.start - address)..(range.end - address),
                             ));
                         }
-                        PreviewMemoryRecord::PreviewImpossible => todo!(),
+                        PreviewMemoryRecord::Impossible => {
+                            detected_errors
+                                .insert(range, PreviewMemoryOperationErrorFailureType::Impossible);
+                        }
                     }
+                }
+
+                if !detected_errors.is_empty() {
+                    return Err(PreviewMemoryOperationError(detected_errors));
                 }
             }
         }
+
+        Ok(())
     }
 }

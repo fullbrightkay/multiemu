@@ -25,7 +25,7 @@ impl FromConfig for MirrorMemory {
     type Config = MirrorMemoryConfig;
 
     fn from_config(component_builder: &mut ComponentBuilder<Self>, config: Self::Config) {
-        let assigned_address_space = config.assigned_address_space.clone();
+        let assigned_address_space = config.assigned_address_space;
         let assigned_ranges = config.assigned_ranges.clone();
 
         component_builder.set_component(Self { config }).set_memory(
@@ -147,7 +147,8 @@ mod test {
 
         machine
             .memory_translation_table
-            .read(0x10000, &mut buffer, ADDRESS_SPACE);
+            .read(0x10000, &mut buffer, ADDRESS_SPACE)
+            .unwrap();
         assert_eq!(buffer, [0xff; 8]);
     }
 
@@ -176,6 +177,7 @@ mod test {
 
         machine
             .memory_translation_table
-            .write(0x10000, &buffer, ADDRESS_SPACE);
+            .write(0x10000, &buffer, ADDRESS_SPACE)
+            .unwrap();
     }
 }

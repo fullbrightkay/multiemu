@@ -49,7 +49,7 @@ impl FromConfig for RomMemory {
             .unwrap();
 
         let assigned_range = config.assigned_range.clone();
-        let assigned_address_space = config.assigned_address_space.clone();
+        let assigned_address_space = config.assigned_address_space;
 
         component_builder
             .set_component(Self {

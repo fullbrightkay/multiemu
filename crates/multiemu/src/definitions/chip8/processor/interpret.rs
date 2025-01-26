@@ -235,11 +235,15 @@ impl Chip8Processor {
 
                 let mut cursor = 0;
                 for buffer_section in buffer.chunks_mut(2) {
-                    self.memory_translation_table.get().unwrap().read(
-                        state.registers.index as usize + cursor,
-                        buffer_section,
-                        CHIP8_ADDRESS_SPACE_ID,
-                    );
+                    self.memory_translation_table
+                        .get()
+                        .unwrap()
+                        .read(
+                            state.registers.index as usize + cursor,
+                            buffer_section,
+                            CHIP8_ADDRESS_SPACE_ID,
+                        )
+                        .unwrap();
                     cursor += buffer_section.len();
                 }
 
@@ -308,31 +312,39 @@ impl Chip8Processor {
 
                 let memory_translation_table = self.memory_translation_table.get().unwrap();
 
-                memory_translation_table.write(
-                    state.registers.index as usize,
-                    bytemuck::bytes_of(&hundreds),
-                    CHIP8_ADDRESS_SPACE_ID,
-                );
-                memory_translation_table.write(
-                    state.registers.index as usize + 1,
-                    bytemuck::bytes_of(&tens),
-                    CHIP8_ADDRESS_SPACE_ID,
-                );
-                memory_translation_table.write(
-                    state.registers.index as usize + 2,
-                    bytemuck::bytes_of(&ones),
-                    CHIP8_ADDRESS_SPACE_ID,
-                );
+                memory_translation_table
+                    .write(
+                        state.registers.index as usize,
+                        bytemuck::bytes_of(&hundreds),
+                        CHIP8_ADDRESS_SPACE_ID,
+                    )
+                    .unwrap();
+                memory_translation_table
+                    .write(
+                        state.registers.index as usize + 1,
+                        bytemuck::bytes_of(&tens),
+                        CHIP8_ADDRESS_SPACE_ID,
+                    )
+                    .unwrap();
+                memory_translation_table
+                    .write(
+                        state.registers.index as usize + 2,
+                        bytemuck::bytes_of(&ones),
+                        CHIP8_ADDRESS_SPACE_ID,
+                    )
+                    .unwrap();
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Save { count }) => {
                 let memory_translation_table = self.memory_translation_table.get().unwrap();
 
                 for i in 0..=count {
-                    memory_translation_table.write(
-                        state.registers.index as usize + i as usize,
-                        &state.registers.work_registers[i as usize..=i as usize],
-                        CHIP8_ADDRESS_SPACE_ID,
-                    );
+                    memory_translation_table
+                        .write(
+                            state.registers.index as usize + i as usize,
+                            &state.registers.work_registers[i as usize..=i as usize],
+                            CHIP8_ADDRESS_SPACE_ID,
+                        )
+                        .unwrap();
                 }
 
                 // Only the original chip8 modifies the index register for this operation
@@ -344,11 +356,13 @@ impl Chip8Processor {
                 let memory_translation_table = self.memory_translation_table.get().unwrap();
 
                 for i in 0..=count {
-                    memory_translation_table.read(
-                        state.registers.index as usize + i as usize,
-                        &mut state.registers.work_registers[i as usize..=i as usize],
-                        CHIP8_ADDRESS_SPACE_ID,
-                    );
+                    memory_translation_table
+                        .read(
+                            state.registers.index as usize + i as usize,
+                            &mut state.registers.work_registers[i as usize..=i as usize],
+                            CHIP8_ADDRESS_SPACE_ID,
+                        )
+                        .unwrap();
                 }
 
                 // Only the original chip8 modifies the index register for this operation

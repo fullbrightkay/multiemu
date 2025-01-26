@@ -369,7 +369,8 @@ mod test {
 
         machine
             .memory_translation_table
-            .read(0, &mut buffer, ADDRESS_SPACE);
+            .read(0, &mut buffer, ADDRESS_SPACE)
+            .unwrap();
         assert_eq!(buffer, [0xff; 4]);
 
         let machine = Machine::build(GameSystem::Unknown, rom_manager.clone())
@@ -390,7 +391,8 @@ mod test {
 
         machine
             .memory_translation_table
-            .read(0, &mut buffer, ADDRESS_SPACE);
+            .read(0, &mut buffer, ADDRESS_SPACE)
+            .unwrap();
         assert_eq!(buffer, [0xff; 4]);
     }
 
@@ -412,7 +414,8 @@ mod test {
 
         machine
             .memory_translation_table
-            .read(0, &mut buffer, ADDRESS_SPACE);
+            .read(0, &mut buffer, ADDRESS_SPACE)
+            .unwrap();
         assert_eq!(buffer, [0xff; 8]);
     }
 
@@ -434,7 +437,8 @@ mod test {
 
         machine
             .memory_translation_table
-            .write(0, &buffer, ADDRESS_SPACE);
+            .write(0, &buffer, ADDRESS_SPACE)
+            .unwrap();
     }
 
     #[test]
@@ -455,11 +459,13 @@ mod test {
 
         machine
             .memory_translation_table
-            .write(0, &buffer, ADDRESS_SPACE);
+            .write(0, &buffer, ADDRESS_SPACE)
+            .unwrap();
         buffer.fill(0);
         machine
             .memory_translation_table
-            .read(0, &mut buffer, ADDRESS_SPACE);
+            .read(0, &mut buffer, ADDRESS_SPACE)
+            .unwrap();
         assert_eq!(buffer, [0xff; 8]);
     }
 
@@ -482,11 +488,13 @@ mod test {
         for i in 0..0x10000 {
             machine
                 .memory_translation_table
-                .write(i, &buffer, ADDRESS_SPACE);
+                .write(i, &buffer, ADDRESS_SPACE)
+                .unwrap();
             buffer.fill(0x00);
             machine
                 .memory_translation_table
-                .read(i, &mut buffer, ADDRESS_SPACE);
+                .read(i, &mut buffer, ADDRESS_SPACE)
+                .unwrap();
             assert_eq!(buffer, [0xff; 1]);
         }
     }
