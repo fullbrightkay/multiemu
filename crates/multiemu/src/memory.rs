@@ -64,7 +64,7 @@ impl MemoryTranslationTable {
     }
 
     /// Step through the memory translation table to fill the buffer with data
-    /// 
+    ///
     /// Contents of the buffer upon failure are usually component specific
     pub fn read(&self, address: usize, buffer: &mut [u8]) {
         debug_assert!(
@@ -99,8 +99,18 @@ impl MemoryTranslationTable {
                 for (range, error) in errors {
                     match error {
                         ReadMemoryRecord::Denied => todo!(),
-                        ReadMemoryRecord::Redirect { address } => {
-                            needed_accesses.push((address, range));
+                        ReadMemoryRecord::Redirect {
+                            address: redirect_address,
+                        } => {
+                            assert!(
+                                !component_assignment_range.contains(&redirect_address),
+                                "Component attempted to redirect to itself"
+                            );
+                            
+                            needed_accesses.push((
+                                redirect_address,
+                                (range.start - address)..(range.end - address),
+                            ));
                         }
                     }
                 }
@@ -108,9 +118,8 @@ impl MemoryTranslationTable {
         }
     }
 
-
     /// Step through the memory translation table to give a set of components the buffer
-    /// 
+    ///
     /// Contents of the buffer upon failure are usually component specific
     pub fn write(&self, address: usize, buffer: &[u8]) {
         debug_assert!(
@@ -145,8 +154,18 @@ impl MemoryTranslationTable {
                 for (range, error) in errors {
                     match error {
                         WriteMemoryRecord::Denied => todo!(),
-                        WriteMemoryRecord::Redirect { address } => {
-                            needed_accesses.push((address, range));
+                        WriteMemoryRecord::Redirect {
+                            address: redirect_address,
+                        } => {
+                            assert!(
+                                !component_assignment_range.contains(&redirect_address),
+                                "Component attempted to redirect to itself"
+                            );
+
+                            needed_accesses.push((
+                                redirect_address,
+                                (range.start - address)..(range.end - address),
+                            ));
                         }
                     }
                 }
@@ -187,8 +206,18 @@ impl MemoryTranslationTable {
                 for (range, error) in errors {
                     match error {
                         PreviewMemoryRecord::Denied => todo!(),
-                        PreviewMemoryRecord::Redirect { address } => {
-                            needed_accesses.push((address, range));
+                        PreviewMemoryRecord::Redirect {
+                            address: redirect_address,
+                        } => {
+                            assert!(
+                                !component_assignment_range.contains(&redirect_address),
+                                "Component attempted to redirect to itself"
+                            );
+
+                            needed_accesses.push((
+                                redirect_address,
+                                (range.start - address)..(range.end - address),
+                            ));
                         }
                         PreviewMemoryRecord::PreviewImpossible => todo!(),
                     }

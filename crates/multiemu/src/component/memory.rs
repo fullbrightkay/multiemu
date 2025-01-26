@@ -26,10 +26,18 @@ pub trait MemoryComponent: Component {
         buffer: &mut [u8],
         errors: &mut RangeMap<usize, PreviewMemoryRecord>,
     ) {
-        errors.insert(
-            address..address + buffer.len(),
-            PreviewMemoryRecord::PreviewImpossible,
-        );
+        let mut read_errors = RangeMap::default();
+        self.read_memory(address, buffer, &mut read_errors);
+
+        // Translate read errors to preview errors
+        for (range, error) in read_errors {
+            match error {
+                ReadMemoryRecord::Denied => errors.insert(range, PreviewMemoryRecord::Denied),
+                ReadMemoryRecord::Redirect { address } => {
+                    errors.insert(range, PreviewMemoryRecord::Redirect { address })
+                }
+            }
+        }
     }
 }
 

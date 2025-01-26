@@ -64,7 +64,7 @@ impl Scheduler {
             .clone()
             .into_values()
             .reduce(lcm)
-            .unwrap();
+            .unwrap_or(1);
 
         let ratios: HashMap<_, _> = adjusted_numerators
             .iter()

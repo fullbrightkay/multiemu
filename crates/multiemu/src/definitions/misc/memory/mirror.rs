@@ -1,30 +1,18 @@
 use crate::{
     component::{memory::MemoryComponent, Component, FromConfig},
     machine::ComponentBuilder,
-    memory::{PreviewMemoryRecord, ReadMemoryRecord, WriteMemoryRecord, VALID_ACCESS_SIZES},
-    rom::manager::RomManager,
+    memory::{ReadMemoryRecord, WriteMemoryRecord, VALID_ACCESS_SIZES},
 };
-use arrayvec::ArrayVec;
 use rangemap::RangeMap;
-use std::{ops::Range, sync::Arc};
-
-#[derive(Debug)]
-pub enum MirrorMemoryOverflowMode {
-    // Deny if it goes outside the assigned range if the assigned range is larger than the target
-    Deny,
-    // Wrap X times
-    Wrap(usize),
-}
 
 #[derive(Debug)]
 pub struct MirrorMemoryConfig {
     pub readable: bool,
     pub writable: bool,
-    pub assigned_range: Range<usize>,
-    pub targets: RangeMap<usize, usize>,
-    pub overflow_mode: MirrorMemoryOverflowMode,
+    pub assigned_ranges: RangeMap<usize, usize>,
 }
 
+#[derive(Debug)]
 pub struct MirrorMemory {
     config: MirrorMemoryConfig,
 }
@@ -35,7 +23,13 @@ impl FromConfig for MirrorMemory {
     type Config = MirrorMemoryConfig;
 
     fn from_config(component_builder: &mut ComponentBuilder<Self>, config: Self::Config) {
-        component_builder.set_component(Self { config });
+        let assigned_ranges = config.assigned_ranges.clone();
+
+        component_builder.set_component(Self { config }).set_memory(
+            assigned_ranges
+                .into_iter()
+                .map(|(assignment, _)| assignment),
+        );
     }
 }
 
@@ -55,43 +49,23 @@ impl MemoryComponent for MirrorMemory {
         let affected_range = address..address + buffer.len();
 
         if !self.config.readable {
-            errors.insert(affected_range, ReadMemoryRecord::Denied);
+            errors.insert(affected_range.clone(), ReadMemoryRecord::Denied);
         }
 
-        let assigned_range_size = self.config.assigned_range.len();
-        let target_range_size = self.config.target.clone().count();
+        let redirect_base_address = self
+            .config
+            .assigned_ranges
+            .get(&affected_range.start)
+            .unwrap();
+        let adjusted_redirect_base_address =
+            redirect_base_address + (address - affected_range.start);
 
-        let offset = (address - self.config.assigned_range.start) + self.config.target.start;
-
-        if assigned_range_size > target_range_size && offset >= self.config.target.end {
-            match self.config.overflow_mode {
-                MirrorMemoryOverflowMode::Deny => {
-                    errors.insert(affected_range.clone(), ReadMemoryRecord::Denied);
-                }
-                MirrorMemoryOverflowMode::Wrap(n) => {
-                    if offset / target_range_size >= n {
-                        errors.push((affected_range.clone(), ReadMemoryRecord::Denied));
-                    }
-
-                    let real_offset = offset % target_range_size;
-
-                    records.push((
-                        affected_range.clone(),
-                        ReadMemoryRecord::Redirect {
-                            offset: real_offset,
-                        },
-                    ));
-
-                    return (self.config.read_cycle_penalty_calculator)(affected_range, false);
-                }
-            }
-        }
-
-        records.push((
-            affected_range.clone(),
-            ReadMemoryRecord::Redirect { offset },
-        ));
-
+        errors.insert(
+            affected_range,
+            ReadMemoryRecord::Redirect {
+                address: adjusted_redirect_base_address,
+            },
+        );
     }
 
     fn write_memory(
@@ -109,93 +83,84 @@ impl MemoryComponent for MirrorMemory {
         let affected_range = address..address + buffer.len();
 
         if !self.config.writable {
-            records.push((affected_range.clone(), WriteMemoryRecord::Denied));
-
-            return (self.config.write_cycle_penalty_calculator)(affected_range, true);
+            errors.insert(affected_range.clone(), WriteMemoryRecord::Denied);
         }
 
-        let assigned_range_size = self.config.assigned_range.clone().count();
-        let target_range_size = self.config.target.clone().count();
+        let redirect_base_address = self
+            .config
+            .assigned_ranges
+            .get(&affected_range.start)
+            .unwrap();
+        let adjusted_redirect_base_address =
+            redirect_base_address + (address - affected_range.start);
 
-        let offset = (address - self.config.assigned_range.start) + self.config.target.start;
+        errors.insert(
+            affected_range,
+            WriteMemoryRecord::Redirect {
+                address: adjusted_redirect_base_address,
+            },
+        );
+    }
+}
 
-        if assigned_range_size > target_range_size && offset >= self.config.target.end {
-            match self.config.overflow_mode {
-                MirrorMemoryOverflowMode::Deny => {
-                    records.push((affected_range.clone(), WriteMemoryRecord::Denied));
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        definitions::misc::memory::standard::{
+            StandardMemory, StandardMemoryConfig, StandardMemoryInitialContents,
+        },
+        machine::Machine,
+        rom::{manager::RomManager, system::GameSystem},
+    };
+    use std::sync::Arc;
 
-                    return (self.config.write_cycle_penalty_calculator)(affected_range, true);
-                }
-                MirrorMemoryOverflowMode::Wrap(n) => {
-                    if offset / target_range_size >= n {
-                        records.push((affected_range.clone(), WriteMemoryRecord::Denied));
+    #[test]
+    fn basic_read() {
+        let rom_manager = Arc::new(RomManager::new(None).unwrap());
+        let machine = Machine::build(GameSystem::Unknown, rom_manager)
+            .build_component::<StandardMemory>(StandardMemoryConfig {
+                max_word_size: 8,
+                readable: true,
+                writable: true,
+                assigned_range: 0..0x10000,
+                initial_contents: StandardMemoryInitialContents::Value { value: 0xff },
+            })
+            .0
+            .build_component::<MirrorMemory>(MirrorMemoryConfig {
+                readable: true,
+                writable: true,
+                assigned_ranges: RangeMap::from_iter([(0x10000..0x20000, 0x0000)]),
+            })
+            .0
+            .build();
+        let mut buffer = [0; 8];
 
-                        return (self.config.write_cycle_penalty_calculator)(affected_range, true);
-                    }
-
-                    let real_offset = offset % target_range_size;
-
-                    records.push((
-                        affected_range.clone(),
-                        WriteMemoryRecord::Redirect {
-                            offset: real_offset,
-                        },
-                    ));
-
-                    return (self.config.write_cycle_penalty_calculator)(affected_range, false);
-                }
-            }
-        }
-
-        records.push((
-            affected_range.clone(),
-            WriteMemoryRecord::Redirect { offset },
-        ));
+        machine.memory_translation_table.read(0x10000, &mut buffer);
+        assert_eq!(buffer, [0xff; 8]);
     }
 
-    fn preview_memory(
-        &mut self,
-        address: usize,
-        buffer: &mut [u8],
-        records: &mut ArrayVec<(Range<usize>, PreviewMemoryRecord), 8>,
-    ) {
-        let affected_range = address..address + buffer.len();
+    #[test]
+    fn basic_write() {
+        let rom_manager = Arc::new(RomManager::new(None).unwrap());
+        let machine = Machine::build(GameSystem::Unknown, rom_manager)
+            .build_component::<StandardMemory>(StandardMemoryConfig {
+                max_word_size: 8,
+                readable: true,
+                writable: true,
+                assigned_range: 0..0x10000,
+                initial_contents: StandardMemoryInitialContents::Value { value: 0xff },
+            })
+            .0
+            .build_component::<MirrorMemory>(MirrorMemoryConfig {
+                readable: true,
+                writable: true,
+                assigned_ranges: RangeMap::from_iter([(0x10000..0x20000, 0x0000)]),
+            })
+            .0
+            .build();
+        let buffer = [0; 8];
 
-        if !self.config.readable {
-            records.push((affected_range.clone(), PreviewMemoryRecord::Denied));
-            return;
-        }
-
-        let assigned_range_size = self.config.assigned_range.clone().count();
-        let target_range_size = self.config.target.clone().count();
-
-        let offset = (address - self.config.assigned_range.start) + self.config.target.start;
-
-        if assigned_range_size > target_range_size && offset >= self.config.target.end {
-            match self.config.overflow_mode {
-                MirrorMemoryOverflowMode::Deny => {
-                    records.push((affected_range.clone(), PreviewMemoryRecord::Denied));
-                }
-                MirrorMemoryOverflowMode::Wrap(n) => {
-                    if offset / target_range_size >= n {
-                        records.push((affected_range.clone(), PreviewMemoryRecord::Denied));
-                    }
-
-                    let real_offset = offset % target_range_size;
-
-                    records.push((
-                        affected_range.clone(),
-                        PreviewMemoryRecord::Redirect {
-                            offset: real_offset,
-                        },
-                    ));
-                }
-            }
-        }
-
-        records.push((
-            affected_range.clone(),
-            PreviewMemoryRecord::Redirect { offset },
-        ));
+        machine.memory_translation_table.write(0x10000, &buffer);
     }
 }

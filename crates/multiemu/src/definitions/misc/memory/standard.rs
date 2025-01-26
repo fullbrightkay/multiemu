@@ -195,11 +195,16 @@ impl MemoryComponent for StandardMemory {
             };
 
             let chunk_end = if chunk_index == end_chunk - 1 {
-                requested_range.end % CHUNK_SIZE
+                // If we're in the last chunk, handle the exact range end
+                if requested_range.end % CHUNK_SIZE == 0 && requested_range.end != 0 {
+                    CHUNK_SIZE
+                } else {
+                    requested_range.end % CHUNK_SIZE
+                }
             } else {
                 CHUNK_SIZE
             };
-
+            
             // Lock the chunk and read the relevant part
             let locked_chunk = chunk.lock().unwrap();
             buffer[buffer_offset..buffer_offset + chunk_end - chunk_start]
@@ -267,11 +272,16 @@ impl MemoryComponent for StandardMemory {
             };
 
             let chunk_end = if chunk_index == end_chunk - 1 {
-                requested_range.end % CHUNK_SIZE
+                // If we're in the last chunk, handle the exact range end
+                if requested_range.end % CHUNK_SIZE == 0 && requested_range.end != 0 {
+                    CHUNK_SIZE
+                } else {
+                    requested_range.end % CHUNK_SIZE
+                }
             } else {
                 CHUNK_SIZE
             };
-
+            
             let mut locked_chunk = chunk.lock().unwrap();
             locked_chunk[chunk_start..chunk_end]
                 .copy_from_slice(&buffer[buffer_offset..buffer_offset + chunk_end - chunk_start]);
