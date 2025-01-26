@@ -23,7 +23,7 @@ pub mod timer;
 pub const CHIP8_ADDRESS_SPACE_ID: AddressSpaceId = 0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Chip8Kind {
+pub enum Chip8Kind {
     Chip8,
     Chip8x,
     Chip48,

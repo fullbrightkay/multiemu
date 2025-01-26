@@ -5,7 +5,8 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-pub const CHIP8_KEYPAD_GAMEPAD_TYPE: EmulatedGamepadTypeId = EmulatedGamepadTypeId::new("Chip8 Keypad");
+pub const CHIP8_KEYPAD_GAMEPAD_TYPE: EmulatedGamepadTypeId =
+    EmulatedGamepadTypeId::new("Chip8 Keypad");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub(super) struct Chip8KeyCode(pub u8);
@@ -84,6 +85,50 @@ pub(super) fn default_bindings() -> HashMap<Input, Input> {
         (
             Input::Keyboard(KeyboardInput::KeyQ),
             Input::Keyboard(KeyboardInput::Numpad4),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyW),
+            Input::Keyboard(KeyboardInput::Numpad5),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyE),
+            Input::Keyboard(KeyboardInput::Numpad6),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyR),
+            Input::Keyboard(KeyboardInput::KeyD),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyA),
+            Input::Keyboard(KeyboardInput::Numpad7),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyS),
+            Input::Keyboard(KeyboardInput::Numpad8),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyD),
+            Input::Keyboard(KeyboardInput::Numpad9),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyF),
+            Input::Keyboard(KeyboardInput::KeyE),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyZ),
+            Input::Keyboard(KeyboardInput::KeyA),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyX),
+            Input::Keyboard(KeyboardInput::Numpad0),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyC),
+            Input::Keyboard(KeyboardInput::KeyB),
+        ),
+        (
+            Input::Keyboard(KeyboardInput::KeyV),
+            Input::Keyboard(KeyboardInput::KeyF),
         ),
     ])
 }
