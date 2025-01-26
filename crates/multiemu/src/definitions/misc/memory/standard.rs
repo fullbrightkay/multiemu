@@ -1,7 +1,7 @@
 use crate::{
     component::{memory::MemoryComponent, Component, FromConfig},
     machine::ComponentBuilder,
-    memory::{ReadMemoryRecord, WriteMemoryRecord, VALID_ACCESS_SIZES},
+    memory::{AddressSpaceId, ReadMemoryRecord, WriteMemoryRecord, VALID_ACCESS_SIZES},
     rom::{
         id::RomId,
         manager::{RomManager, RomRequirement},
@@ -46,20 +46,10 @@ pub struct StandardMemoryConfig {
     pub max_word_size: usize,
     // Memory region this buffer will be mapped to
     pub assigned_range: Range<usize>,
+    /// Address space this exists on
+    pub assigned_address_space: AddressSpaceId,
     // Initial contents
     pub initial_contents: StandardMemoryInitialContents,
-}
-
-impl Default for StandardMemoryConfig {
-    fn default() -> Self {
-        Self {
-            readable: true,
-            writable: true,
-            max_word_size: 8,
-            assigned_range: 0..0,
-            initial_contents: StandardMemoryInitialContents::Value { value: 0 },
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -126,6 +116,7 @@ impl FromConfig for StandardMemory {
                 .map(Mutex::new),
         );
         let assigned_range = config.assigned_range.clone();
+        let assigned_address_space = config.assigned_address_space.clone();
 
         let me = Self {
             config,
@@ -136,7 +127,7 @@ impl FromConfig for StandardMemory {
 
         component_builder
             .set_component(me)
-            .set_memory([assigned_range]);
+            .set_memory([(assigned_address_space, assigned_range)]);
     }
 }
 
@@ -145,6 +136,7 @@ impl MemoryComponent for StandardMemory {
         &self,
         address: usize,
         buffer: &mut [u8],
+        _address_space: AddressSpaceId,
         errors: &mut RangeMap<usize, ReadMemoryRecord>,
     ) {
         debug_assert!(
@@ -204,7 +196,7 @@ impl MemoryComponent for StandardMemory {
             } else {
                 CHUNK_SIZE
             };
-            
+
             // Lock the chunk and read the relevant part
             let locked_chunk = chunk.lock().unwrap();
             buffer[buffer_offset..buffer_offset + chunk_end - chunk_start]
@@ -222,6 +214,7 @@ impl MemoryComponent for StandardMemory {
         &self,
         address: usize,
         buffer: &[u8],
+        _address_space: AddressSpaceId,
         errors: &mut RangeMap<usize, WriteMemoryRecord>,
     ) {
         debug_assert!(
@@ -281,7 +274,7 @@ impl MemoryComponent for StandardMemory {
             } else {
                 CHUNK_SIZE
             };
-            
+
             let mut locked_chunk = chunk.lock().unwrap();
             locked_chunk[chunk_start..chunk_end]
                 .copy_from_slice(&buffer[buffer_offset..buffer_offset + chunk_end - chunk_start]);
@@ -379,9 +372,10 @@ impl StandardMemory {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use crate::{machine::Machine, rom::system::GameSystem};
 
-    use super::*;
+    const ADDRESS_SPACE: AddressSpaceId = 0;
 
     #[test]
     fn basic_read() {
@@ -392,13 +386,16 @@ mod test {
                 readable: true,
                 writable: true,
                 assigned_range: 0..0x10000,
+                assigned_address_space: ADDRESS_SPACE,
                 initial_contents: StandardMemoryInitialContents::Value { value: 0xff },
             })
             .0
             .build();
         let mut buffer = [0; 8];
 
-        machine.memory_translation_table.read(0, &mut buffer);
+        machine
+            .memory_translation_table
+            .read(0, &mut buffer, ADDRESS_SPACE);
         assert_eq!(buffer, [0xff; 8]);
     }
 
@@ -411,13 +408,16 @@ mod test {
                 readable: true,
                 writable: true,
                 assigned_range: 0..0x10000,
+                assigned_address_space: ADDRESS_SPACE,
                 initial_contents: StandardMemoryInitialContents::Value { value: 0xff },
             })
             .0
             .build();
         let buffer = [0; 8];
 
-        machine.memory_translation_table.write(0, &buffer);
+        machine
+            .memory_translation_table
+            .write(0, &buffer, ADDRESS_SPACE);
     }
 
     #[test]
@@ -429,15 +429,20 @@ mod test {
                 readable: true,
                 writable: true,
                 assigned_range: 0..0x10000,
+                assigned_address_space: ADDRESS_SPACE,
                 initial_contents: StandardMemoryInitialContents::Value { value: 0xff },
             })
             .0
             .build();
         let mut buffer = [0xff; 8];
 
-        machine.memory_translation_table.write(0, &buffer);
+        machine
+            .memory_translation_table
+            .write(0, &buffer, ADDRESS_SPACE);
         buffer.fill(0);
-        machine.memory_translation_table.read(0, &mut buffer);
+        machine
+            .memory_translation_table
+            .read(0, &mut buffer, ADDRESS_SPACE);
         assert_eq!(buffer, [0xff; 8]);
     }
 
@@ -450,6 +455,7 @@ mod test {
                 readable: true,
                 writable: true,
                 assigned_range: 0..0x10000,
+                assigned_address_space: ADDRESS_SPACE,
                 initial_contents: StandardMemoryInitialContents::Value { value: 0xff },
             })
             .0
@@ -457,9 +463,13 @@ mod test {
         let mut buffer = [0xff; 1];
 
         for i in 0..0x10000 {
-            machine.memory_translation_table.write(i, &buffer);
+            machine
+                .memory_translation_table
+                .write(i, &buffer, ADDRESS_SPACE);
             buffer.fill(0x00);
-            machine.memory_translation_table.read(i, &mut buffer);
+            machine
+                .memory_translation_table
+                .read(i, &mut buffer, ADDRESS_SPACE);
             assert_eq!(buffer, [0xff; 1]);
         }
     }

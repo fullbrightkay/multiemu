@@ -5,6 +5,7 @@ use crate::{
         schedulable::SchedulableComponent,
         Component, ComponentId, FromConfig,
     },
+    definitions::chip8::CHIP8_ADDRESS_SPACE_ID,
     input::{manager::InputManager, EmulatedGamepadId},
     machine::ComponentBuilder,
     memory::MemoryTranslationTable,
@@ -23,7 +24,7 @@ mod instruction;
 mod interpret;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub enum ExecutionState {
+enum ExecutionState {
     Normal,
     AwaitingKeyPress {
         register: Register,
@@ -204,10 +205,11 @@ impl SchedulableComponent for Chip8Processor {
             match &state.execution_state {
                 ExecutionState::Normal => {
                     let mut instruction = [0; 2];
-                    self.memory_translation_table
-                        .get()
-                        .unwrap()
-                        .read(state.registers.program as usize, &mut instruction);
+                    self.memory_translation_table.get().unwrap().read(
+                        state.registers.program as usize,
+                        &mut instruction,
+                        CHIP8_ADDRESS_SPACE_ID,
+                    );
                     let decompiled_instruction = decode_instruction(instruction).unwrap();
                     state.registers.program = state.registers.program.wrapping_add(2);
 

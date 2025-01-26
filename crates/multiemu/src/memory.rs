@@ -46,15 +46,17 @@ const MAX_ACCESS_SIZE: u8 = const {
     max as u8
 };
 
+pub type AddressSpaceId = u8;
+
 #[derive(Debug)]
 pub struct MemoryTranslationTable {
-    mappings: RangeMap<usize, ComponentId>,
+    mappings: HashMap<AddressSpaceId, RangeMap<usize, ComponentId>>,
     components: HashMap<ComponentId, Arc<dyn MemoryComponent>>,
 }
 
 impl MemoryTranslationTable {
     pub fn new(
-        mappings: RangeMap<usize, ComponentId>,
+        mappings: HashMap<AddressSpaceId, RangeMap<usize, ComponentId>>,
         components: HashMap<ComponentId, Arc<dyn MemoryComponent>>,
     ) -> Self {
         Self {
@@ -63,15 +65,27 @@ impl MemoryTranslationTable {
         }
     }
 
+    pub fn address_spaces(&self) -> u8 {
+        self.mappings
+            .len()
+            .try_into()
+            .expect("Too many address spaces!")
+    }
+
     /// Step through the memory translation table to fill the buffer with data
     ///
     /// Contents of the buffer upon failure are usually component specific
-    pub fn read(&self, address: usize, buffer: &mut [u8]) {
+    pub fn read(&self, address: usize, buffer: &mut [u8], address_space: AddressSpaceId) {
         debug_assert!(
             VALID_ACCESS_SIZES.contains(&buffer.len()),
             "Invalid memory access size {}",
             buffer.len()
         );
+
+        let mappings = &self
+            .mappings
+            .get(&address_space)
+            .expect("Non existant address space");
 
         let mut needed_accesses =
             ArrayVec::<_, { MAX_ACCESS_SIZE as usize }>::from_iter([(address, 0..buffer.len())]);
@@ -81,7 +95,7 @@ impl MemoryTranslationTable {
                 (buffer_subrange.start + address)..(buffer_subrange.end + address);
 
             for (component_assignment_range, component_id) in
-                self.mappings.overlapping(accessing_range.clone())
+                mappings.overlapping(accessing_range.clone())
             {
                 let mut errors = RangeMap::default();
                 let component = self.components.get(component_id).unwrap();
@@ -93,6 +107,7 @@ impl MemoryTranslationTable {
                 component.read_memory(
                     overlap.start,
                     &mut buffer[buffer_subrange.clone()],
+                    address_space,
                     &mut errors,
                 );
 
@@ -106,7 +121,7 @@ impl MemoryTranslationTable {
                                 !component_assignment_range.contains(&redirect_address),
                                 "Component attempted to redirect to itself"
                             );
-                            
+
                             needed_accesses.push((
                                 redirect_address,
                                 (range.start - address)..(range.end - address),
@@ -121,12 +136,17 @@ impl MemoryTranslationTable {
     /// Step through the memory translation table to give a set of components the buffer
     ///
     /// Contents of the buffer upon failure are usually component specific
-    pub fn write(&self, address: usize, buffer: &[u8]) {
+    pub fn write(&self, address: usize, buffer: &[u8], address_space: AddressSpaceId) {
         debug_assert!(
             VALID_ACCESS_SIZES.contains(&buffer.len()),
             "Invalid memory access size {}",
             buffer.len()
         );
+
+        let mappings = &self
+            .mappings
+            .get(&address_space)
+            .expect("Non existant address space");
 
         let mut needed_accesses =
             ArrayVec::<_, { MAX_ACCESS_SIZE as usize }>::from_iter([(address, 0..buffer.len())]);
@@ -136,7 +156,7 @@ impl MemoryTranslationTable {
                 (buffer_subrange.start + address)..(buffer_subrange.end + address);
 
             for (component_assignment_range, component_id) in
-                self.mappings.overlapping(accessing_range.clone())
+                mappings.overlapping(accessing_range.clone())
             {
                 let mut errors = RangeMap::default();
                 let component = self.components.get(component_id).unwrap();
@@ -148,6 +168,7 @@ impl MemoryTranslationTable {
                 component.write_memory(
                     overlap.start,
                     &buffer[buffer_subrange.clone()],
+                    address_space,
                     &mut errors,
                 );
 
@@ -173,12 +194,17 @@ impl MemoryTranslationTable {
         }
     }
 
-    pub fn preview(&self, address: usize, buffer: &mut [u8]) {
+    pub fn preview(&self, address: usize, buffer: &mut [u8], address_space: AddressSpaceId) {
         debug_assert!(
             VALID_ACCESS_SIZES.contains(&buffer.len()),
             "Invalid memory access size {}",
             buffer.len()
         );
+
+        let mappings = &self
+            .mappings
+            .get(&address_space)
+            .expect("Non existant address space");
 
         let mut needed_accesses =
             ArrayVec::<_, { MAX_ACCESS_SIZE as usize }>::from_iter([(address, 0..buffer.len())]);
@@ -188,7 +214,7 @@ impl MemoryTranslationTable {
                 (buffer_subrange.start + address)..(buffer_subrange.end + address);
 
             for (component_assignment_range, component_id) in
-                self.mappings.overlapping(accessing_range.clone())
+                mappings.overlapping(accessing_range.clone())
             {
                 let mut errors = RangeMap::default();
                 let component = self.components.get(component_id).unwrap();
@@ -200,6 +226,7 @@ impl MemoryTranslationTable {
                 component.preview_memory(
                     overlap.start,
                     &mut buffer[buffer_subrange.clone()],
+                    address_space,
                     &mut errors,
                 );
 

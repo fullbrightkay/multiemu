@@ -58,7 +58,6 @@ pub struct GlobalConfig {
     #[serde_inline_default(DEFAULT_HOTKEYS.clone())]
     pub hotkeys: IndexMap<BTreeSet<Input>, Hotkey>,
     #[serde(default)]
-    #[serde_as(deserialize_as = "DefaultOnError")]
     pub graphics_setting: GraphicsSettings,
     #[serde_inline_default(true)]
     pub vsync: bool,

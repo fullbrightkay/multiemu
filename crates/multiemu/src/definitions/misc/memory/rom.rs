@@ -1,7 +1,10 @@
 use crate::{
     component::{memory::MemoryComponent, Component, FromConfig},
     machine::ComponentBuilder,
-    memory::{PreviewMemoryRecord, ReadMemoryRecord, WriteMemoryRecord, VALID_ACCESS_SIZES},
+    memory::{
+        AddressSpaceId, PreviewMemoryRecord, ReadMemoryRecord, WriteMemoryRecord,
+        VALID_ACCESS_SIZES,
+    },
     rom::{id::RomId, manager::RomRequirement},
 };
 use rangemap::RangeMap;
@@ -19,16 +22,8 @@ pub struct RomMemoryConfig {
     pub max_word_size: u8,
     // Memory region this buffer will be mapped to
     pub assigned_range: Range<usize>,
-}
-
-impl Default for RomMemoryConfig {
-    fn default() -> Self {
-        Self {
-            rom: RomId::default(),
-            max_word_size: 8,
-            assigned_range: 0..0,
-        }
-    }
+    /// Address space this exists on
+    pub assigned_address_space: AddressSpaceId,
 }
 
 #[derive(Debug)]
@@ -53,10 +48,15 @@ impl FromConfig for RomMemory {
             .open(config.rom, RomRequirement::Required)
             .unwrap();
 
-        component_builder.set_component(Self {
-            config,
-            rom: Mutex::new(rom_file),
-        });
+        let assigned_range = config.assigned_range.clone();
+        let assigned_address_space = config.assigned_address_space.clone();
+
+        component_builder
+            .set_component(Self {
+                config,
+                rom: Mutex::new(rom_file),
+            })
+            .set_memory([(assigned_address_space, assigned_range)]);
     }
 }
 
@@ -65,6 +65,7 @@ impl MemoryComponent for RomMemory {
         &self,
         address: usize,
         buffer: &mut [u8],
+        _address_space: AddressSpaceId,
         errors: &mut RangeMap<usize, ReadMemoryRecord>,
     ) {
         debug_assert!(
@@ -94,6 +95,7 @@ impl MemoryComponent for RomMemory {
         &self,
         address: usize,
         buffer: &[u8],
+        _address_space: AddressSpaceId,
         errors: &mut RangeMap<usize, WriteMemoryRecord>,
     ) {
         debug_assert!(
@@ -108,6 +110,7 @@ impl MemoryComponent for RomMemory {
         &self,
         address: usize,
         buffer: &mut [u8],
+        _address_space: AddressSpaceId,
         _errors: &mut RangeMap<usize, PreviewMemoryRecord>,
     ) {
         let adjusted_offset = address - self.config.assigned_range.start;

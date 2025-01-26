@@ -3,7 +3,7 @@ use super::{
     instruction::{Chip8InstructionSet, InstructionSetChip8},
     Chip8Processor, ExecutionState, ProcessorState,
 };
-use crate::definitions::chip8::{Chip8Kind, CHIP8_FONT};
+use crate::definitions::chip8::{Chip8Kind, CHIP8_ADDRESS_SPACE_ID, CHIP8_FONT};
 use arrayvec::ArrayVec;
 use bitvec::{
     field::BitField,
@@ -235,10 +235,11 @@ impl Chip8Processor {
 
                 let mut cursor = 0;
                 for buffer_section in buffer.chunks_mut(2) {
-                    self.memory_translation_table
-                        .get()
-                        .unwrap()
-                        .read(state.registers.index as usize + cursor, buffer_section);
+                    self.memory_translation_table.get().unwrap().read(
+                        state.registers.index as usize + cursor,
+                        buffer_section,
+                        CHIP8_ADDRESS_SPACE_ID,
+                    );
                     cursor += buffer_section.len();
                 }
 
@@ -310,14 +311,17 @@ impl Chip8Processor {
                 memory_translation_table.write(
                     state.registers.index as usize,
                     bytemuck::bytes_of(&hundreds),
+                    CHIP8_ADDRESS_SPACE_ID,
                 );
                 memory_translation_table.write(
                     state.registers.index as usize + 1,
                     bytemuck::bytes_of(&tens),
+                    CHIP8_ADDRESS_SPACE_ID,
                 );
                 memory_translation_table.write(
                     state.registers.index as usize + 2,
                     bytemuck::bytes_of(&ones),
+                    CHIP8_ADDRESS_SPACE_ID,
                 );
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Save { count }) => {
@@ -327,6 +331,7 @@ impl Chip8Processor {
                     memory_translation_table.write(
                         state.registers.index as usize + i as usize,
                         &state.registers.work_registers[i as usize..=i as usize],
+                        CHIP8_ADDRESS_SPACE_ID,
                     );
                 }
 
@@ -342,6 +347,7 @@ impl Chip8Processor {
                     memory_translation_table.read(
                         state.registers.index as usize + i as usize,
                         &mut state.registers.work_registers[i as usize..=i as usize],
+                        CHIP8_ADDRESS_SPACE_ID,
                     );
                 }
 

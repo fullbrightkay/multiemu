@@ -7,13 +7,13 @@ use crate::{
         Component, ComponentId, FromConfig,
     },
     input::manager::InputManager,
-    memory::MemoryTranslationTable,
+    memory::{AddressSpaceId, MemoryTranslationTable},
     rom::{manager::RomManager, system::GameSystem},
     scheduler::Scheduler,
 };
 use downcast_rs::DowncastSync;
 use num::rational::Ratio;
-use rangemap::RangeSet;
+use rangemap::{RangeMap, RangeSet};
 use std::{
     collections::{HashMap, HashSet},
     ops::Range,
@@ -42,7 +42,7 @@ pub struct InputComponentInfo {
 
 pub struct MemoryComponentInfo {
     pub component: Arc<dyn MemoryComponent>,
-    pub assigned_ranges: RangeSet<usize>,
+    pub assigned_ranges: HashMap<AddressSpaceId, RangeSet<usize>>,
 }
 
 pub struct ComponentTable {
@@ -138,21 +138,36 @@ impl MachineBuilder {
     }
 
     pub fn build(mut self) -> Machine {
-        let memory_translation_table = Arc::new(MemoryTranslationTable::new(
-            // Extract mappings
-            self.components
-                .iter()
-                .filter_map(|(component_id, component_table)| {
-                    if let Some(memory_component_info) = &component_table.as_memory {
-                        return Some((memory_component_info.assigned_ranges.iter(), *component_id));
-                    }
+        let mut memory_translation_table_mappings: HashMap<_, RangeMap<_, _>> = HashMap::default();
 
-                    None
+        for (address_space_id, assigned_ranges, component_id) in self
+            .components
+            .iter()
+            .filter_map(|(component_id, component_table)| {
+                if let Some(memory_component_info) = &component_table.as_memory {
+                    return Some((memory_component_info.assigned_ranges.iter(), *component_id));
+                }
+
+                None
+            })
+            .flat_map(|(ranges, component_id)| {
+                ranges.map(move |(address_space_id, assigned_ranges)| {
+                    (address_space_id, assigned_ranges, component_id)
                 })
-                .flat_map(|(ranges, component_id)| {
-                    ranges.map(move |range| (range.clone(), component_id))
-                })
-                .collect(),
+            })
+        {
+            memory_translation_table_mappings
+                .entry(*address_space_id)
+                .or_default()
+                .extend(
+                    assigned_ranges
+                        .iter()
+                        .map(|range| (range.clone(), component_id)),
+                );
+        }
+
+        let memory_translation_table = Arc::new(MemoryTranslationTable::new(
+            memory_translation_table_mappings,
             // Extract memory components
             self.components
                 .iter()
@@ -300,13 +315,25 @@ impl<C: Component> ComponentBuilder<C> {
         self
     }
 
-    pub fn set_memory(&mut self, ranges: impl IntoIterator<Item = Range<usize>>) -> &mut Self
+    pub fn set_memory(
+        &mut self,
+        ranges: impl IntoIterator<Item = (AddressSpaceId, Range<usize>)>,
+    ) -> &mut Self
     where
         C: MemoryComponent,
     {
+        let mut assigned_ranges: HashMap<_, RangeSet<_>> = HashMap::default();
+
+        for (address_space_id, range) in ranges.into_iter() {
+            assigned_ranges
+                .entry(address_space_id)
+                .or_default()
+                .insert(range);
+        }
+
         self.as_memory = self.component.clone().map(|c| MemoryComponentInfo {
             component: c,
-            assigned_ranges: ranges.into_iter().collect(),
+            assigned_ranges,
         });
 
         self

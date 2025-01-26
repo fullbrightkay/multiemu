@@ -2,12 +2,11 @@ use super::misc::memory::standard::{
     StandardMemory, StandardMemoryConfig, StandardMemoryInitialContents,
 };
 use crate::{
-    machine::Machine,
-    rom::{
+    machine::Machine, memory::AddressSpaceId, rom::{
         id::RomId,
         manager::RomManager,
         system::{GameSystem, OtherSystem},
-    },
+    }
 };
 use audio::Chip8Audio;
 use display::{Chip8Display, Chip8DisplayConfig};
@@ -20,6 +19,8 @@ pub mod audio;
 pub mod display;
 pub mod processor;
 pub mod timer;
+
+pub const CHIP8_ADDRESS_SPACE_ID: AddressSpaceId = 0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Chip8Kind {
@@ -169,6 +170,7 @@ pub fn chip8_machine(user_specified_roms: Vec<RomId>, rom_manager: Arc<RomManage
         writable: true,
         max_word_size: 2,
         assigned_range: 0x000..0x200,
+        assigned_address_space: CHIP8_ADDRESS_SPACE_ID,
         initial_contents: StandardMemoryInitialContents::Array {
             value: Cow::Borrowed(bytemuck::cast_slice(&CHIP8_FONT)),
             offset: 0x000,
@@ -180,6 +182,7 @@ pub fn chip8_machine(user_specified_roms: Vec<RomId>, rom_manager: Arc<RomManage
         writable: true,
         max_word_size: 2,
         assigned_range: 0x200..0x1000,
+        assigned_address_space: CHIP8_ADDRESS_SPACE_ID,
         initial_contents: StandardMemoryInitialContents::Rom {
             rom_id: user_specified_roms[0],
             offset: 0x200,

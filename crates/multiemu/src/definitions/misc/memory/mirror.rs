@@ -1,7 +1,7 @@
 use crate::{
     component::{memory::MemoryComponent, Component, FromConfig},
     machine::ComponentBuilder,
-    memory::{ReadMemoryRecord, WriteMemoryRecord, VALID_ACCESS_SIZES},
+    memory::{AddressSpaceId, ReadMemoryRecord, WriteMemoryRecord, VALID_ACCESS_SIZES},
 };
 use rangemap::RangeMap;
 
@@ -10,6 +10,8 @@ pub struct MirrorMemoryConfig {
     pub readable: bool,
     pub writable: bool,
     pub assigned_ranges: RangeMap<usize, usize>,
+    /// Address space this exists on
+    pub assigned_address_space: AddressSpaceId,
 }
 
 #[derive(Debug)]
@@ -23,12 +25,13 @@ impl FromConfig for MirrorMemory {
     type Config = MirrorMemoryConfig;
 
     fn from_config(component_builder: &mut ComponentBuilder<Self>, config: Self::Config) {
+        let assigned_address_space = config.assigned_address_space.clone();
         let assigned_ranges = config.assigned_ranges.clone();
 
         component_builder.set_component(Self { config }).set_memory(
             assigned_ranges
                 .into_iter()
-                .map(|(assignment, _)| assignment),
+                .map(|(assignment, _)| (assigned_address_space, assignment)),
         );
     }
 }
@@ -38,6 +41,7 @@ impl MemoryComponent for MirrorMemory {
         &self,
         address: usize,
         buffer: &mut [u8],
+        _address_space: AddressSpaceId,
         errors: &mut RangeMap<usize, ReadMemoryRecord>,
     ) {
         debug_assert!(
@@ -72,6 +76,7 @@ impl MemoryComponent for MirrorMemory {
         &self,
         address: usize,
         buffer: &[u8],
+        _address_space: AddressSpaceId,
         errors: &mut RangeMap<usize, WriteMemoryRecord>,
     ) {
         debug_assert!(
@@ -115,6 +120,8 @@ mod test {
     };
     use std::sync::Arc;
 
+    const ADDRESS_SPACE: AddressSpaceId = 0;
+
     #[test]
     fn basic_read() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
@@ -124,6 +131,7 @@ mod test {
                 readable: true,
                 writable: true,
                 assigned_range: 0..0x10000,
+                assigned_address_space: ADDRESS_SPACE,
                 initial_contents: StandardMemoryInitialContents::Value { value: 0xff },
             })
             .0
@@ -131,12 +139,15 @@ mod test {
                 readable: true,
                 writable: true,
                 assigned_ranges: RangeMap::from_iter([(0x10000..0x20000, 0x0000)]),
+                assigned_address_space: ADDRESS_SPACE,
             })
             .0
             .build();
         let mut buffer = [0; 8];
 
-        machine.memory_translation_table.read(0x10000, &mut buffer);
+        machine
+            .memory_translation_table
+            .read(0x10000, &mut buffer, ADDRESS_SPACE);
         assert_eq!(buffer, [0xff; 8]);
     }
 
@@ -149,6 +160,7 @@ mod test {
                 readable: true,
                 writable: true,
                 assigned_range: 0..0x10000,
+                assigned_address_space: ADDRESS_SPACE,
                 initial_contents: StandardMemoryInitialContents::Value { value: 0xff },
             })
             .0
@@ -156,11 +168,14 @@ mod test {
                 readable: true,
                 writable: true,
                 assigned_ranges: RangeMap::from_iter([(0x10000..0x20000, 0x0000)]),
+                assigned_address_space: ADDRESS_SPACE,
             })
             .0
             .build();
         let buffer = [0; 8];
 
-        machine.memory_translation_table.write(0x10000, &buffer);
+        machine
+            .memory_translation_table
+            .write(0x10000, &buffer, ADDRESS_SPACE);
     }
 }
