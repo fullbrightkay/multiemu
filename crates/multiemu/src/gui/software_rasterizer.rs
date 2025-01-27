@@ -84,9 +84,8 @@ impl SoftwareEguiRenderer {
             self.textures.remove(&remove_texture_id);
         }
 
-        render_buffer
-            .par_column_iter_mut()
-            .for_each(|mut row| row.fill(Srgba::new(0, 0, 0, 0xff)));
+        render_buffer.fill(Srgba::new(0, 0, 0, 0xff));
+
         let render_buffer_dimensions =
             Vector2::new(render_buffer.nrows(), render_buffer.ncols()).cast::<f32>();
 
@@ -203,7 +202,7 @@ fn triangle_area(v: Matrix2x3<f32>) -> f32 {
         v.column(0) - v.column(2),
     ]);
 
-    0.5 * edges.column(0).perp(&(v.column(2) - v.column(0))).abs()
+    edges.column(0).perp(&(v.column(2) - v.column(0))).abs()
 }
 
 #[inline]
