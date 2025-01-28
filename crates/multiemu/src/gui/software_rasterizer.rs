@@ -137,6 +137,13 @@ impl SoftwareEguiRenderer {
                                 v2.pos.coords,
                             ]);
 
+                            // Precompute edges for the triangle
+                            let edges = Matrix2x3::from_columns(&[
+                                v1.pos.coords - v0.pos.coords,
+                                v2.pos.coords - v1.pos.coords,
+                                v0.pos.coords - v2.pos.coords,
+                            ]);
+
                             let mut bounding_box =
                                 render_buffer.view_range_mut(min.x..=max.x, min.y..=max.y);
 
@@ -149,10 +156,10 @@ impl SoftwareEguiRenderer {
                                         let pixel_center =
                                             Point2::new(x as f32 + 0.5, y as f32 + 0.5);
 
-                                        if is_point_in_triangle(pixel_center, points) {
+                                        if is_point_in_triangle(pixel_center, points, &edges) {
                                             // Interpolate colors based on barycentric coordinates
                                             let barycentric =
-                                                barycentric_coordinates(pixel_center, points);
+                                                barycentric_coordinates(pixel_center, points, &edges);
 
                                             let interpolated_color = v0.color.into_linear()
                                                 * barycentric.x
@@ -206,8 +213,13 @@ fn triangle_area(v: Matrix2x3<f32>) -> f32 {
 }
 
 #[inline]
-fn barycentric_coordinates(point: Point2<f32>, v: Matrix2x3<f32>) -> Vector3<f32> {
-    let area = Vector3::from_element(triangle_area(v));
+fn barycentric_coordinates(
+    point: Point2<f32>,
+    v: Matrix2x3<f32>,
+    edges: &Matrix2x3<f32>,
+) -> Vector3<f32> {
+    let area = edges.column(0).perp(&(v.column(2) - v.column(0))).abs();
+
     let area1 = triangle_area(Matrix2x3::from_columns(&[
         point.coords,
         v.column(1).into(),
@@ -224,17 +236,11 @@ fn barycentric_coordinates(point: Point2<f32>, v: Matrix2x3<f32>) -> Vector3<f32
         point.coords,
     ]));
 
-    Vector3::new(area1, area2, area3).component_div(&area)
+    Vector3::new(area1, area2, area3) / area
 }
 
 #[inline]
-fn is_point_in_triangle(point: Point2<f32>, v: Matrix2x3<f32>) -> bool {
-    let edges = Matrix2x3::from_columns(&[
-        v.column(1) - v.column(0),
-        v.column(2) - v.column(1),
-        v.column(0) - v.column(2),
-    ]);
-
+fn is_point_in_triangle(point: Point2<f32>, v: Matrix2x3<f32>, edges: &Matrix2x3<f32>) -> bool {
     let to_p = Matrix2x3::from_columns(&[
         point.coords - v.column(0),
         point.coords - v.column(1),

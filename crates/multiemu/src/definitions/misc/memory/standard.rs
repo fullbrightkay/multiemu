@@ -7,7 +7,7 @@ use crate::{
         manager::{RomManager, RomRequirement},
     },
 };
-use rand::{thread_rng, RngCore};
+use rand::RngCore;
 use rangemap::RangeMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -307,9 +307,9 @@ impl StandardMemory {
                     .for_each(|chunk| chunk.lock().unwrap().fill(*value));
             }
             StandardMemoryInitialContents::Random => {
-                self.buffer.par_iter().for_each(|chunk| {
-                    thread_rng().fill_bytes(chunk.lock().unwrap().as_mut_slice())
-                });
+                self.buffer
+                    .par_iter()
+                    .for_each(|chunk| rand::rng().fill_bytes(chunk.lock().unwrap().as_mut_slice()));
             }
             StandardMemoryInitialContents::Array { value, offset } => {
                 self.write_internal(*offset, value);
@@ -355,6 +355,7 @@ mod test {
     fn initialization() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
         let machine = Machine::build(GameSystem::Unknown, rom_manager.clone())
+            .insert_bus(ADDRESS_SPACE, 64)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,
@@ -374,6 +375,7 @@ mod test {
         assert_eq!(buffer, [0xff; 4]);
 
         let machine = Machine::build(GameSystem::Unknown, rom_manager.clone())
+            .insert_bus(ADDRESS_SPACE, 64)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,
@@ -400,6 +402,7 @@ mod test {
     fn basic_read() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
         let machine = Machine::build(GameSystem::Unknown, rom_manager)
+            .insert_bus(ADDRESS_SPACE, 64)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,
@@ -423,6 +426,7 @@ mod test {
     fn basic_write() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
         let machine = Machine::build(GameSystem::Unknown, rom_manager)
+            .insert_bus(ADDRESS_SPACE, 64)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,
@@ -445,6 +449,7 @@ mod test {
     fn basic_read_write() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
         let machine = Machine::build(GameSystem::Unknown, rom_manager)
+            .insert_bus(ADDRESS_SPACE, 64)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,
@@ -473,6 +478,7 @@ mod test {
     fn extensive() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
         let machine = Machine::build(GameSystem::Unknown, rom_manager)
+            .insert_bus(ADDRESS_SPACE, 64)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,

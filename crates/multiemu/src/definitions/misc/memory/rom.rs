@@ -7,13 +7,9 @@ use crate::{
     },
     rom::{id::RomId, manager::RomRequirement},
 };
+use memmap2::{Mmap, MmapOptions};
 use rangemap::RangeMap;
-use std::{
-    fs::File,
-    io::{Read, Seek, SeekFrom},
-    ops::Range,
-    sync::Mutex,
-};
+use std::ops::Range;
 
 #[derive(Debug)]
 pub struct RomMemoryConfig {
@@ -29,7 +25,8 @@ pub struct RomMemoryConfig {
 #[derive(Debug)]
 pub struct RomMemory {
     config: RomMemoryConfig,
-    rom: Mutex<File>,
+    // FIXME: Create a fallback for platforms without mmap
+    rom: Mmap,
 }
 
 impl Component for RomMemory {
@@ -50,12 +47,10 @@ impl FromConfig for RomMemory {
 
         let assigned_range = config.assigned_range.clone();
         let assigned_address_space = config.assigned_address_space;
+        let rom = unsafe { MmapOptions::new().map(&rom_file).unwrap() };
 
         component_builder
-            .set_component(Self {
-                config,
-                rom: Mutex::new(rom_file),
-            })
+            .set_component(Self { config, rom })
             .set_memory([(assigned_address_space, assigned_range)]);
     }
 }
@@ -81,14 +76,9 @@ impl MemoryComponent for RomMemory {
         }
 
         let adjusted_offset = address - self.config.assigned_range.start;
-        let mut rom_guard = self.rom.lock().unwrap();
-
-        // FIXME: this is very inefficient, we need a cacher so we can skip syscalls for every operation
-        // Also maybe put open roms into thread locals
-        rom_guard
-            .seek(SeekFrom::Start(adjusted_offset as u64))
-            .unwrap();
-        rom_guard.read_exact(buffer).unwrap();
+        buffer.copy_from_slice(
+            &self.rom[adjusted_offset..(adjusted_offset + buffer.len()).min(self.rom.len())],
+        );
     }
 
     fn write_memory(
@@ -114,11 +104,8 @@ impl MemoryComponent for RomMemory {
         _errors: &mut RangeMap<usize, PreviewMemoryRecord>,
     ) {
         let adjusted_offset = address - self.config.assigned_range.start;
-        let mut rom_guard = self.rom.lock().unwrap();
-
-        rom_guard
-            .seek(SeekFrom::Start(adjusted_offset as u64))
-            .unwrap();
-        rom_guard.read_exact(buffer).unwrap();
+        buffer.copy_from_slice(
+            &self.rom[adjusted_offset..(adjusted_offset + buffer.len()).min(self.rom.len())],
+        );
     }
 }

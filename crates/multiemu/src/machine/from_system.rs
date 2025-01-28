@@ -1,6 +1,6 @@
 use super::Machine;
 use crate::{
-    definitions::chip8::chip8_machine,
+    definitions::{chip8::chip8_machine, nes::nes_machine},
     rom::{
         id::RomId,
         manager::RomManager,
@@ -19,7 +19,9 @@ impl Machine {
             GameSystem::Nintendo(NintendoSystem::GameBoy) => todo!(),
             GameSystem::Nintendo(NintendoSystem::GameBoyColor) => todo!(),
             GameSystem::Nintendo(NintendoSystem::GameBoyAdvance) => todo!(),
-            GameSystem::Nintendo(NintendoSystem::NintendoEntertainmentSystem) => todo!(),
+            GameSystem::Nintendo(NintendoSystem::NintendoEntertainmentSystem) => {
+                nes_machine(user_specified_roms, rom_manager)
+            }
             GameSystem::Nintendo(NintendoSystem::SuperNintendoEntertainmentSystem) => todo!(),
             GameSystem::Sega(sega_system) => todo!(),
             GameSystem::Sony(sony_system) => todo!(),

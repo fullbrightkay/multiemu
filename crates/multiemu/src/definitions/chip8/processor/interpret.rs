@@ -11,7 +11,7 @@ use bitvec::{
     view::BitView,
 };
 use nalgebra::Point2;
-use rand::{thread_rng, Rng};
+use rand::Rng;
 
 impl Chip8Processor {
     pub(super) fn interpret_instruction(
@@ -224,7 +224,7 @@ impl Chip8Processor {
                 immediate,
             }) => {
                 state.registers.work_registers[register as usize] =
-                    thread_rng().gen::<u8>() & immediate;
+                    rand::rng().random::<u8>() & immediate;
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Draw {
                 coordinate_registers,

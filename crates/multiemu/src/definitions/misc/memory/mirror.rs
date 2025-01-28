@@ -126,6 +126,7 @@ mod test {
     fn basic_read() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
         let machine = Machine::build(GameSystem::Unknown, rom_manager)
+            .insert_bus(ADDRESS_SPACE, 64)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,
@@ -156,6 +157,7 @@ mod test {
     fn basic_write() {
         let rom_manager = Arc::new(RomManager::new(None).unwrap());
         let machine = Machine::build(GameSystem::Unknown, rom_manager)
+            .insert_bus(ADDRESS_SPACE, 64)
             .build_component::<StandardMemory>(StandardMemoryConfig {
                 max_word_size: 8,
                 readable: true,

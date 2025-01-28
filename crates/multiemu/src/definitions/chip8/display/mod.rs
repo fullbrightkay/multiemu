@@ -1,4 +1,3 @@
-use std::sync::{Arc, Mutex, OnceLock};
 use super::Chip8Kind;
 use crate::{
     component::{
@@ -12,6 +11,10 @@ use nalgebra::{DMatrix, DMatrixViewMut, Point2, Vector2};
 use num::rational::Ratio;
 use palette::Srgba;
 use serde::{Deserialize, Serialize};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex, OnceLock,
+};
 
 #[cfg(platform_desktop)]
 mod desktop;
@@ -38,6 +41,7 @@ pub struct Chip8DisplaySnapshot {
 pub struct Chip8Display {
     config: Chip8DisplayConfig,
     state: OnceLock<InternalState>,
+    modified: AtomicBool,
 }
 
 impl Chip8Display {
@@ -53,6 +57,8 @@ impl Chip8Display {
             Chip8Kind::SuperChip8 => todo!(),
             _ => todo!(),
         };
+
+        self.modified.store(true, Ordering::Relaxed);
 
         match self.state.get() {
             #[cfg(graphics_vulkan)]
@@ -124,6 +130,7 @@ impl FromConfig for Chip8Display {
             .set_component(Chip8Display {
                 config,
                 state: OnceLock::default(),
+                modified: AtomicBool::new(false),
             })
             .set_schedulable(Ratio::from_integer(60), [], [])
             .set_display();
@@ -141,17 +148,18 @@ trait Chip8DisplayImplementation {
 
 impl SchedulableComponent for Chip8Display {
     fn run(&self, _period: u64) {
-        // Only update it once
-
-        match self.state.get() {
-            Some(InternalState::Software(software_state)) => {
-                software_state.commit_display();
+        // Only update it once and if the thing is actually updated
+        if self.modified.swap(false, Ordering::Relaxed) {
+            match self.state.get() {
+                Some(InternalState::Software(software_state)) => {
+                    software_state.commit_display();
+                }
+                #[cfg(graphics_vulkan)]
+                Some(InternalState::Vulkan(vulkan_state)) => {
+                    vulkan_state.commit_display();
+                }
+                _ => panic!("Internal state not initialized"),
             }
-            #[cfg(graphics_vulkan)]
-            Some(InternalState::Vulkan(vulkan_state)) => {
-                vulkan_state.commit_display();
-            }
-            _ => panic!("Internal state not initialized"),
         }
     }
 }

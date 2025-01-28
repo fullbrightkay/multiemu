@@ -1,9 +1,17 @@
+use super::RomSpecification;
 use crate::{
     config::{GraphicsSettings, GLOBAL_CONFIG},
-    rom::{id::RomId, info::RomInfo, manager::RomManager, system::GameSystem}, runtime::{launch::Runtime, platform::{PlatformRuntime, SoftwareRenderingRuntime}},
+    rom::{id::RomId, info::RomInfo, manager::RomManager, system::GameSystem},
+    runtime::{
+        launch::Runtime,
+        platform::{PlatformRuntime, SoftwareRenderingRuntime},
+    },
 };
-use std::{error::Error, fs::{create_dir_all, File}, sync::Arc};
-use super::RomSpecification;
+use std::{
+    error::Error,
+    fs::{create_dir_all, File},
+    sync::Arc,
+};
 
 pub fn rom_run(
     roms: Vec<RomSpecification>,
@@ -25,28 +33,30 @@ pub fn rom_run(
                 let Some(system) = GameSystem::guess(&rom_path) else {
                     return Err(format!("{} is not a valid rom", rom_path.display()).into());
                 };
-        
+
                 let mut rom_file = File::open(&rom_path)?;
                 let rom_id = RomId::from_read(&mut rom_file);
-        
+
                 let rom_info = RomInfo {
                     name: Some(rom_path.to_string_lossy().to_string()),
                     id: rom_id,
                     system,
                     region: None,
                 };
-        
+
                 user_specified_roms.push(rom_id);
                 if let Err(e) = transaction.insert(rom_info) {
                     if let native_db::db_type::Error::DuplicateKey { key_name: _ } = e {
-                        tracing::warn!("Skipping inserting duplicate information into the database");
+                        tracing::warn!(
+                            "Skipping inserting duplicate information into the database"
+                        );
                     } else {
                         return Err(e.into());
                     }
                 }
-        
+
                 rom_manager.rom_paths.insert(rom_id, rom_path);
-            },
+            }
         }
     }
 

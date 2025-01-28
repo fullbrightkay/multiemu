@@ -2,11 +2,13 @@ use super::misc::memory::standard::{
     StandardMemory, StandardMemoryConfig, StandardMemoryInitialContents,
 };
 use crate::{
-    machine::Machine, memory::AddressSpaceId, rom::{
+    machine::Machine,
+    memory::AddressSpaceId,
+    rom::{
         id::RomId,
         manager::RomManager,
         system::{GameSystem, OtherSystem},
-    }
+    },
 };
 use audio::Chip8Audio;
 use display::{Chip8Display, Chip8DisplayConfig};
@@ -149,6 +151,7 @@ const CHIP8_FONT: [[u8; 5]; 16] = [
 
 pub fn chip8_machine(user_specified_roms: Vec<RomId>, rom_manager: Arc<RomManager>) -> Machine {
     let machine = Machine::build(GameSystem::Other(OtherSystem::Chip8), rom_manager);
+    let machine = machine.insert_bus(CHIP8_ADDRESS_SPACE_ID, 12);
 
     let (machine, audio_component_id) = machine.default_component::<Chip8Audio>();
     let (machine, timer_component_id) = machine.default_component::<Chip8Timer>();

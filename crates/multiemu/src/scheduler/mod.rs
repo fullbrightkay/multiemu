@@ -1,6 +1,5 @@
 use crate::component::ComponentId;
-use crate::machine::ComponentTable;
-use framerate_tracker::FramerateTracker;
+use crate::machine::component_store::ComponentStore;
 use itertools::Itertools;
 use num::ToPrimitive;
 use num::{integer::lcm, rational::Ratio, Integer};
@@ -11,27 +10,23 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub mod framerate_tracker;
-
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Scheduler {
     current_tick: u64,
     rollover_tick: u64,
     tick_real_time: Ratio<u64>,
-    // This is a platform specific thing so do not serialize it
-    #[serde(skip)]
-    framerate_tracker: FramerateTracker,
     // Stores precomputed periods for each component
     schedule: RangeMap<u64, Vec<ComponentId>>,
+    allotted_time: Duration,
 }
 
 impl Scheduler {
-    pub fn new(components: &HashMap<ComponentId, ComponentTable>) -> Self {
+    pub fn new(components: &ComponentStore) -> Self {
         let component_infos: HashMap<_, _> = components
             .iter()
             .filter_map(|(component_id, table)| {
                 if let Some(schedulable_component) = &table.as_schedulable {
-                    return Some((*component_id, schedulable_component.timings));
+                    return Some((component_id, schedulable_component.timings));
                 }
 
                 None
@@ -137,7 +132,7 @@ impl Scheduler {
 
         let tick_real_time = Ratio::new(common_multiple, common_denominator).recip();
 
-        tracing::info!(
+        tracing::debug!(
             "Schedule ticks take {:?} and restarts at tick {}",
             Duration::from_secs_f64(tick_real_time.to_f64().unwrap()),
             common_denominator
@@ -147,24 +142,22 @@ impl Scheduler {
             current_tick: 0,
             rollover_tick: common_denominator,
             tick_real_time,
-            framerate_tracker: FramerateTracker::default(),
             schedule,
+            allotted_time: Duration::from_millis(16),
         }
     }
 
-    pub fn run(&mut self, components: &HashMap<ComponentId, ComponentTable>) {
-        self.framerate_tracker.record_frame();
+    pub fn run(&mut self, components: &ComponentStore) {
         // TODO: This should actually be calculating how much time is between frames minus draw time
-        let average_frame_time = self.framerate_tracker.average_frame_timings();
         let starting_tick = self.current_tick;
         let timestamp = Instant::now();
 
         // Ensure we don't overstep the framerate
-        while average_frame_time > timestamp.elapsed()
+        while self.allotted_time > timestamp.elapsed()
             // ensure we don't overstate the emulated timespace
             && (self.current_tick.wrapping_sub(starting_tick) as f32
                 * self.tick_real_time.to_f32().unwrap())
-                <  average_frame_time.as_secs_f32()
+                <  self.allotted_time.as_secs_f32()
         {
             if let Some((time_slice, component_ids)) =
                 self.schedule.get_key_value(&self.current_tick)
@@ -172,7 +165,7 @@ impl Scheduler {
                 // TODO: Run this through rayon once we can stop vulkan related concurrency issues
                 for component_id in component_ids {
                     if let Some(component_info) = components
-                        .get(component_id)
+                        .get(*component_id)
                         .and_then(|table| table.as_schedulable.as_ref())
                     {
                         component_info
@@ -192,5 +185,35 @@ impl Scheduler {
 
             self.current_tick %= self.rollover_tick;
         }
+    }
+
+    pub fn too_slow(&mut self) {
+        // Set our allotted time to lower but not lower than one tick
+        self.allotted_time = self
+            .allotted_time
+            .saturating_sub(Duration::from_nanos(500))
+            .max(Duration::from_secs_f32(
+                self.tick_real_time.to_f32().unwrap(),
+            ));
+
+        tracing::trace!(
+            "Alotted time for scheduler moved down to {:?}",
+            self.allotted_time
+        );
+    }
+
+    pub fn too_fast(&mut self) {
+        // Set our allotted time higher but not higher than what one period takes
+        self.allotted_time = self
+            .allotted_time
+            .saturating_add(Duration::from_nanos(500))
+            .min(Duration::from_secs_f32(
+                (self.tick_real_time * self.rollover_tick).to_f32().unwrap(),
+            ));
+
+        tracing::trace!(
+            "Alotted time for scheduler moved up to {:?}",
+            self.allotted_time
+        );
     }
 }

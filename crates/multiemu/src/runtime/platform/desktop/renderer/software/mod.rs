@@ -56,7 +56,8 @@ impl RenderingBackendState for SoftwareRenderingRuntime {
 
     fn redraw(&mut self, machine: &Machine) {
         let window_dimensions = self.display_api_handle.inner_size();
-        let window_dimensions = Vector2::new(window_dimensions.width, window_dimensions.height);
+        let window_dimensions =
+            Vector2::new(window_dimensions.width, window_dimensions.height).cast::<usize>();
 
         // HACK: This only works with a single component
         let component_info = machine.display_components().next().unwrap();
@@ -85,7 +86,8 @@ impl RenderingBackendState for SoftwareRenderingRuntime {
         let component_display_buffer_size = Vector2::new(
             display_component_framebuffer.nrows(),
             display_component_framebuffer.ncols(),
-        );
+        )
+        .cast::<u16>();
 
         let scaling = window_dimensions
             .cast::<f32>()
@@ -103,7 +105,7 @@ impl RenderingBackendState for SoftwareRenderingRuntime {
                     .try_cast::<usize>()
                     .unwrap()
                     .zip_map(&window_dimensions, |dest_dim, window_dim| {
-                        dest_dim.min(window_dim as usize)
+                        dest_dim.min(window_dim)
                     });
 
                 let dest_end = Vector2::new(x, y)
@@ -114,7 +116,7 @@ impl RenderingBackendState for SoftwareRenderingRuntime {
                     .try_cast::<usize>()
                     .unwrap()
                     .zip_map(&window_dimensions, |dest_dim, window_dim| {
-                        dest_dim.min(window_dim as usize)
+                        dest_dim.min(window_dim)
                     });
 
                 // Fill the destination pixels with the source pixel

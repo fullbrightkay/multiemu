@@ -1,7 +1,8 @@
-use crate::component::{Component, FromConfig};
-use crate::rom::RomManager;
+use crate::{
+    component::{Component, FromConfig},
+    machine::ComponentBuilder,
+};
 use enumflags2::bitflags;
-use std::sync::Arc;
 
 mod decode;
 mod instruction;
@@ -55,7 +56,10 @@ pub enum I8080Kind {
     Lr35902,
 }
 
-pub struct I8080 {}
+#[derive(Debug)]
+pub struct I8080 {
+    config: I8080Config,
+}
 
 impl Component for I8080 {}
 
@@ -87,7 +91,7 @@ impl I8080Config {
 impl FromConfig for I8080 {
     type Config = I8080Config;
 
-    fn from_config(rom_manager: &RomManager, config: Self::Config) -> Self {
+    fn from_config(component_builder: &mut ComponentBuilder<Self>, config: Self::Config) {
         todo!()
     }
 }

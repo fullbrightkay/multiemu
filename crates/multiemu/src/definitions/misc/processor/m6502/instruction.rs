@@ -1,6 +1,6 @@
 use crate::{
+    memory::{AddressSpaceId, MemoryTranslationTable},
     processor::{InstructionSet, InstructionTextRepresentation},
-    scheduler::query::memory::MemoryMut,
 };
 use std::borrow::Cow;
 
@@ -25,11 +25,29 @@ pub enum AddressingMode {
 
 impl AddressingMode {
     pub fn from_group1_addressing(
-        addressing_mode_id: u8,
-        memory: &MemoryMut,
-        cursor: usize,
-    ) -> (Self, u64, u8) {
-        todo!()
+        cursor: u16,
+        address_space: AddressSpaceId,
+        memory_translation_table: &MemoryTranslationTable,
+        addressing_mode: u8,
+    ) -> (Self, u8) {
+        match addressing_mode {
+            0b000 => {
+                let mut indirect_byte = [0];
+                let _ = memory_translation_table.read(
+                    cursor.wrapping_add(1) as usize,
+                    &mut indirect_byte,
+                    address_space,
+                );
+
+                (
+                    AddressingMode::XIndexedZeroPageIndirect(u8::from_ne_bytes(indirect_byte)),
+                    1,
+                )
+            }
+            _ => {
+                unreachable!()
+            }
+        }
     }
 }
 

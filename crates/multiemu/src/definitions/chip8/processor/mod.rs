@@ -214,7 +214,7 @@ impl SchedulableComponent for Chip8Processor {
                             CHIP8_ADDRESS_SPACE_ID,
                         )
                         .unwrap();
-                    
+
                     let decompiled_instruction = decode_instruction(instruction).unwrap();
                     state.registers.program = state.registers.program.wrapping_add(2);
 

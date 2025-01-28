@@ -1,7 +1,7 @@
+use crate::{config::GLOBAL_CONFIG, rom::manager::RomManager};
 use clap::Subcommand;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{error::Error, path::PathBuf};
-use crate::{config::GLOBAL_CONFIG, rom::manager::RomManager};
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum NativeAction {

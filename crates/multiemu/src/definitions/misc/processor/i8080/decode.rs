@@ -1,5 +1,5 @@
-use crate::component::definitions::misc::processor::i8080::instruction::SingleByteArgument;
-use crate::component::memory::MemoryTranslationTable;
+use super::instruction::SingleByteArgument;
+use crate::memory::MemoryTranslationTable;
 use bitvec::field::BitField;
 use bitvec::prelude::Msb0;
 use bitvec::view::BitView;
@@ -14,7 +14,7 @@ pub fn decode_instruction(
     memory_translation_table: &MemoryTranslationTable,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut instruction_first_byte = 0;
-    memory_translation_table.read(cursor, std::slice::from_mut(&mut instruction_first_byte))?;
+    memory_translation_table.read(cursor, std::slice::from_mut(&mut instruction_first_byte));
     let instruction_first_byte = instruction_first_byte.view_bits::<Msb0>();
     let instruction_identifier = instruction_first_byte[INSTRUCTION_IDENTIFIER].load::<u8>();
 

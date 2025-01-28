@@ -1,24 +1,24 @@
+use indexmap::IndexMap;
+
 use super::instruction::{AddressingMode, M6502InstructionSet, M6502InstructionSetSpecifier};
+use crate::definitions::misc::processor::m6502::decode::decode_instruction;
 use crate::{
-    component::{
-        definitions::misc::{
-            plain_memory::{PlainMemory, PlainMemoryConfig, PlainMemoryInitialContents},
-            processor::m6502::decode::decode_instruction,
-        },
-        memory::MemoryTranslationTable,
-        FromConfig,
+    definitions::misc::memory::standard::{
+        StandardMemory, StandardMemoryConfig, StandardMemoryInitialContents,
     },
-    rom::RomManager,
+    machine::Machine,
+    memory::AddressSpaceId,
+    rom::{manager::RomManager, system::GameSystem},
 };
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
+
+const ADDRESS_SPACE: AddressSpaceId = 0;
 
 #[test]
 fn m6502_instruction_decode() {
-    let rom_manager = Arc::new(RomManager::default());
-    let map: HashMap<&'static [u8], _> = HashMap::from_iter([
+    let rom_manager = Arc::new(RomManager::new(None).unwrap());
+
+    let map: IndexMap<_, _> = IndexMap::from_iter([
         (
             [0x00].as_slice(),
             (
@@ -312,25 +312,23 @@ fn m6502_instruction_decode() {
     ]);
 
     for (instruction_binary, (decoded_instruction, decoded_instruction_size)) in map {
-        let mut memory_translation_table = MemoryTranslationTable::default();
-
-        let memory = PlainMemory::from_config(
-            rom_manager.clone(),
-            PlainMemoryConfig {
+        let machine = Machine::build(GameSystem::Unknown, rom_manager.clone())
+            .build_component::<StandardMemory>(StandardMemoryConfig {
+                max_word_size: 8,
                 readable: true,
-                assigned_range: 0x0..0x4,
-                initial_contents: PlainMemoryInitialContents::Array {
-                    value: instruction_binary,
+                writable: true,
+                assigned_range: 0..0x4,
+                assigned_address_space: ADDRESS_SPACE,
+                initial_contents: StandardMemoryInitialContents::Array {
+                    value: Cow::Borrowed(instruction_binary),
                     offset: 0,
                 },
-                ..Default::default()
-            },
-        );
-
-        memory_translation_table.insert(0x0..0x4, Arc::new(Mutex::new(memory)));
+            })
+            .0
+            .build();
 
         let (decoded_instruction_result, decoded_instruction_result_size) =
-            decode_instruction(0x0, &memory_translation_table).unwrap();
+            decode_instruction(0x0, ADDRESS_SPACE, &machine.memory_translation_table).unwrap();
 
         assert_eq!(
             (decoded_instruction, decoded_instruction_size),

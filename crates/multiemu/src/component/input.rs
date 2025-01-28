@@ -2,7 +2,10 @@ use super::Component;
 use crate::input::{manager::InputManager, EmulatedGamepadId, Input};
 use serde::{Deserialize, Serialize};
 use std::{
-    borrow::Cow, collections::{HashMap, HashSet}, fmt::Display, sync::Arc
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    sync::Arc,
 };
 
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]

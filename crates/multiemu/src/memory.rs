@@ -1,7 +1,8 @@
-use crate::component::{memory::MemoryComponent, ComponentId};
+use crate::{component::ComponentId, machine::component_store::ComponentStore};
 use arrayvec::ArrayVec;
+use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use rangemap::RangeMap;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, ops::Range, sync::Arc};
 use thiserror::Error;
 
 pub const VALID_ACCESS_SIZES: &[usize] = &[1, 2, 4, 8];
@@ -81,24 +82,44 @@ const MAX_ACCESS_SIZE: u8 = const {
 pub type AddressSpaceId = u8;
 
 #[derive(Debug)]
+pub struct BusInfo {
+    population: RangeMap<usize, ComponentId>,
+    width: u8,
+}
+
+#[derive(Default, Debug)]
 pub struct MemoryTranslationTable {
-    mappings: HashMap<AddressSpaceId, RangeMap<usize, ComponentId>>,
-    components: HashMap<ComponentId, Arc<dyn MemoryComponent>>,
+    busses: HashMap<AddressSpaceId, BusInfo>,
+    component_store: Option<Arc<ComponentStore>>,
 }
 
 impl MemoryTranslationTable {
-    pub fn new(
-        mappings: HashMap<AddressSpaceId, RangeMap<usize, ComponentId>>,
-        components: HashMap<ComponentId, Arc<dyn MemoryComponent>>,
-    ) -> Self {
-        Self {
-            mappings,
-            components,
-        }
+    pub fn insert_bus(&mut self, id: AddressSpaceId, width: u8) {
+        self.busses.entry(id).or_insert_with(|| BusInfo {
+            population: RangeMap::default(),
+            width,
+        });
+    }
+
+    pub fn insert_component(
+        &mut self,
+        id: AddressSpaceId,
+        component_id: ComponentId,
+        ranges: impl IntoIterator<Item = Range<usize>>,
+    ) {
+        self.busses
+            .get_mut(&id)
+            .expect("Bus must be initialized before inserting component")
+            .population
+            .extend(ranges.into_iter().map(|range| (range, component_id)));
+    }
+
+    pub fn set_component_store(&mut self, component_store: Arc<ComponentStore>) {
+        self.component_store = Some(component_store);
     }
 
     pub fn address_spaces(&self) -> u8 {
-        self.mappings
+        self.busses
             .len()
             .try_into()
             .expect("Too many address spaces!")
@@ -120,10 +141,13 @@ impl MemoryTranslationTable {
             buffer.len()
         );
 
-        let mappings = &self
-            .mappings
+        let bus_info = self
+            .busses
             .get(&address_space)
             .expect("Non existant address space");
+
+        // Cut off address
+        let address = address.view_bits::<Lsb0>()[..bus_info.width as usize].load_le::<usize>();
 
         let mut needed_accesses =
             ArrayVec::<_, { MAX_ACCESS_SIZE as usize }>::from_iter([(address, 0..buffer.len())]);
@@ -133,10 +157,16 @@ impl MemoryTranslationTable {
                 (buffer_subrange.start + address)..(buffer_subrange.end + address);
 
             for (component_assignment_range, component_id) in
-                mappings.overlapping(accessing_range.clone())
+                bus_info.population.overlapping(accessing_range.clone())
             {
                 let mut errors = RangeMap::default();
-                let component = self.components.get(component_id).unwrap();
+                let component = self
+                    .component_store
+                    .as_ref()
+                    .unwrap()
+                    .get(*component_id)
+                    .and_then(|table| table.as_memory.as_ref().map(|info| &info.component))
+                    .unwrap();
 
                 let overlap_start = accessing_range.start.max(component_assignment_range.start);
                 let overlap_end = accessing_range.end.min(component_assignment_range.end);
@@ -198,10 +228,12 @@ impl MemoryTranslationTable {
             buffer.len()
         );
 
-        let mappings = &self
-            .mappings
+        let bus_info = self
+            .busses
             .get(&address_space)
             .expect("Non existant address space");
+
+        let address = address.view_bits::<Lsb0>()[..bus_info.width as usize].load_le::<usize>();
 
         let mut needed_accesses =
             ArrayVec::<_, { MAX_ACCESS_SIZE as usize }>::from_iter([(address, 0..buffer.len())]);
@@ -211,10 +243,16 @@ impl MemoryTranslationTable {
                 (buffer_subrange.start + address)..(buffer_subrange.end + address);
 
             for (component_assignment_range, component_id) in
-                mappings.overlapping(accessing_range.clone())
+                bus_info.population.overlapping(accessing_range.clone())
             {
                 let mut errors = RangeMap::default();
-                let component = self.components.get(component_id).unwrap();
+                let component = self
+                    .component_store
+                    .as_ref()
+                    .unwrap()
+                    .get(*component_id)
+                    .and_then(|table| table.as_memory.as_ref().map(|info| &info.component))
+                    .unwrap();
 
                 let overlap_start = accessing_range.start.max(component_assignment_range.start);
                 let overlap_end = accessing_range.end.min(component_assignment_range.end);
@@ -273,10 +311,12 @@ impl MemoryTranslationTable {
             buffer.len()
         );
 
-        let mappings = &self
-            .mappings
+        let bus_info = self
+            .busses
             .get(&address_space)
             .expect("Non existant address space");
+
+        let address = address.view_bits::<Lsb0>()[..bus_info.width as usize].load_le::<usize>();
 
         let mut needed_accesses =
             ArrayVec::<_, { MAX_ACCESS_SIZE as usize }>::from_iter([(address, 0..buffer.len())]);
@@ -286,10 +326,16 @@ impl MemoryTranslationTable {
                 (buffer_subrange.start + address)..(buffer_subrange.end + address);
 
             for (component_assignment_range, component_id) in
-                mappings.overlapping(accessing_range.clone())
+                bus_info.population.overlapping(accessing_range.clone())
             {
                 let mut errors = RangeMap::default();
-                let component = self.components.get(component_id).unwrap();
+                let component = self
+                    .component_store
+                    .as_ref()
+                    .unwrap()
+                    .get(*component_id)
+                    .and_then(|table| table.as_memory.as_ref().map(|info| &info.component))
+                    .unwrap();
 
                 let overlap_start = accessing_range.start.max(component_assignment_range.start);
                 let overlap_end = accessing_range.end.min(component_assignment_range.end);

@@ -1,7 +1,9 @@
 use crate::{
     gui::menu::MenuState,
     rom::{id::RomId, manager::RomManager, system::GameSystem},
-    runtime::{launch::Runtime, rendering_backend::RenderingBackendState},
+    runtime::{
+        launch::Runtime, rendering_backend::RenderingBackendState, timing_tracker::TimingTracker,
+    },
 };
 use ::winit::{event_loop::EventLoop, window::Window};
 use std::sync::Arc;
@@ -15,6 +17,7 @@ pub struct PlatformRuntime<RS: RenderingBackendState> {
     windowing_context: Option<WindowingContext<RS>>,
     machine_context: Option<MachineContext>,
     rom_manager: Arc<RomManager>,
+    timing_tracker: TimingTracker,
 }
 
 impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> Runtime for PlatformRuntime<RS> {
@@ -24,6 +27,7 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> Runtime for Plat
             windowing_context: None,
             machine_context: None,
             rom_manager,
+            timing_tracker: TimingTracker::default(),
         };
 
         let event_loop = EventLoop::new().unwrap();
@@ -43,6 +47,7 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> Runtime for Plat
                 forced_system,
             }),
             rom_manager,
+            timing_tracker: TimingTracker::default(),
         };
 
         let event_loop = EventLoop::new().unwrap();

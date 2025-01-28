@@ -11,18 +11,21 @@ use crate::{
     rom::{manager::RomManager, system::GameSystem},
     scheduler::Scheduler,
 };
-use downcast_rs::DowncastSync;
+use component_store::ComponentStore;
 use num::rational::Ratio;
-use rangemap::{RangeMap, RangeSet};
+use rangemap::RangeSet;
 use std::{
     collections::{HashMap, HashSet},
     ops::Range,
     sync::Arc,
+    time::Duration,
 };
 
+pub mod component_store;
 pub mod from_system;
 pub mod serialization;
 
+#[derive(Debug)]
 pub struct SchedulableComponentInfo {
     pub component: Arc<dyn SchedulableComponent>,
     pub timings: Ratio<u64>,
@@ -30,21 +33,25 @@ pub struct SchedulableComponentInfo {
     pub run_before: HashSet<ComponentId>,
 }
 
+#[derive(Debug)]
 pub struct DisplayComponentInfo {
     pub component: Arc<dyn DisplayComponent>,
 }
 
+#[derive(Debug)]
 pub struct InputComponentInfo {
     pub component: Arc<dyn InputComponent>,
     pub registered_gamepad_types: HashMap<EmulatedGamepadTypeId, EmulatedGamepadMetadata>,
     pub registered_gamepads: Vec<EmulatedGamepadTypeId>,
 }
 
+#[derive(Debug)]
 pub struct MemoryComponentInfo {
     pub component: Arc<dyn MemoryComponent>,
     pub assigned_ranges: HashMap<AddressSpaceId, RangeSet<usize>>,
 }
 
+#[derive(Debug)]
 pub struct ComponentTable {
     pub component: Arc<dyn Component>,
     pub as_schedulable: Option<SchedulableComponentInfo>,
@@ -56,37 +63,39 @@ pub struct ComponentTable {
 pub struct Machine {
     pub rom_manager: Arc<RomManager>,
     pub memory_translation_table: Arc<MemoryTranslationTable>,
-    pub components: HashMap<ComponentId, ComponentTable>,
+    pub component_store: Arc<ComponentStore>,
     pub input_manager: Arc<InputManager>,
     pub system: GameSystem,
-    scheduler: Scheduler,
+    pub scheduler: Scheduler,
 }
 
 impl Machine {
     pub fn build(game_system: GameSystem, rom_manager: Arc<RomManager>) -> MachineBuilder {
         MachineBuilder {
             current_component_index: ComponentId(0),
-            components: HashMap::default(),
+            component_store: ComponentStore::new(),
             rom_manager,
             input_manager: InputManager::default(),
             system: game_system,
+            memory_translation_table: MemoryTranslationTable::default(),
         }
     }
 
     pub fn display_components(&self) -> impl Iterator<Item = &DisplayComponentInfo> {
-        self.components
-            .values()
+        self.component_store
+            .components()
             .filter_map(|table| table.as_display.as_ref())
     }
 
     pub fn run(&mut self) {
-        self.scheduler.run(&self.components);
+        self.scheduler.run(&self.component_store);
     }
 }
 
 pub struct MachineBuilder {
+    memory_translation_table: MemoryTranslationTable,
     current_component_index: ComponentId,
-    components: HashMap<ComponentId, ComponentTable>,
+    component_store: ComponentStore,
     input_manager: InputManager,
     pub rom_manager: Arc<RomManager>,
     pub system: GameSystem,
@@ -127,9 +136,14 @@ impl MachineBuilder {
         self.build_component::<C>(config)
     }
 
+    pub fn insert_bus(mut self, id: AddressSpaceId, width: u8) -> MachineBuilder {
+        self.memory_translation_table.insert_bus(id, width);
+        self
+    }
+
     pub fn get_component<C: Component>(&self, id: ComponentId) -> Option<Arc<C>> {
-        self.components
-            .get(&id)?
+        self.component_store
+            .get(id)?
             .component
             .clone()
             .into_any_arc()
@@ -138,14 +152,12 @@ impl MachineBuilder {
     }
 
     pub fn build(mut self) -> Machine {
-        let mut memory_translation_table_mappings: HashMap<_, RangeMap<_, _>> = HashMap::default();
-
         for (address_space_id, assigned_ranges, component_id) in self
-            .components
+            .component_store
             .iter()
             .filter_map(|(component_id, component_table)| {
                 if let Some(memory_component_info) = &component_table.as_memory {
-                    return Some((memory_component_info.assigned_ranges.iter(), *component_id));
+                    return Some((memory_component_info.assigned_ranges.iter(), component_id));
                 }
 
                 None
@@ -156,35 +168,17 @@ impl MachineBuilder {
                 })
             })
         {
-            memory_translation_table_mappings
-                .entry(*address_space_id)
-                .or_default()
-                .extend(
-                    assigned_ranges
-                        .iter()
-                        .map(|range| (range.clone(), component_id)),
-                );
+            self.memory_translation_table.insert_component(
+                *address_space_id,
+                component_id,
+                assigned_ranges.clone(),
+            );
         }
-
-        let memory_translation_table = Arc::new(MemoryTranslationTable::new(
-            memory_translation_table_mappings,
-            // Extract memory components
-            self.components
-                .iter()
-                .filter_map(|(component_id, component_table)| {
-                    if let Some(memory_component_info) = &component_table.as_memory {
-                        return Some((*component_id, memory_component_info.component.clone()));
-                    }
-
-                    None
-                })
-                .collect(),
-        ));
 
         // Setup emulated gamepad types
         for (emulated_gamepad_type_id, emulated_gamepad_metadata) in self
-            .components
-            .values()
+            .component_store
+            .components()
             .filter_map(|component_table| component_table.as_input.as_ref())
             .flat_map(|input_component_info| input_component_info.registered_gamepad_types.iter())
         {
@@ -204,7 +198,7 @@ impl MachineBuilder {
 
         // Setup emulated gamepads
         for (raw_gamepad_id, (component_id, gamepad_type_id)) in self
-            .components
+            .component_store
             .iter()
             .filter_map(|(component_id, component_table)| {
                 if let Some(input_component_info) = &component_table.as_input {
@@ -214,10 +208,9 @@ impl MachineBuilder {
                 None
             })
             .flat_map(|(component_id, input_component_info)| {
-                input_component_info
-                    .registered_gamepads
-                    .iter()
-                    .map(|gamepad_type_id| (*component_id, gamepad_type_id))
+                input_component_info.registered_gamepads.iter().map(
+                    move |gamepad_type_id: &EmulatedGamepadTypeId| (component_id, gamepad_type_id),
+                )
             })
             .enumerate()
         {
@@ -230,29 +223,35 @@ impl MachineBuilder {
                 .register_emulated_gamepad(emulated_gamepad_id, gamepad_type_id.clone());
         }
 
+        let component_store = Arc::new(self.component_store);
+
+        self.memory_translation_table
+            .set_component_store(component_store.clone());
+        let memory_translation_table = Arc::new(self.memory_translation_table);
+
         let machine = Machine {
-            scheduler: Scheduler::new(&self.components),
+            scheduler: Scheduler::new(&component_store),
             rom_manager: self.rom_manager,
             memory_translation_table,
-            components: self.components,
+            component_store,
             input_manager: Arc::new(self.input_manager),
             system: self.system,
         };
 
         // Set the memory translation tables for everything
         for component in machine
-            .components
-            .values()
+            .component_store
+            .components()
             .map(|component_table| &component_table.component)
         {
             component.set_memory_translation_table(machine.memory_translation_table.clone());
         }
 
-        // Set up input
+        // Set up input for only input components
         for (component_id, gamepad_ids) in emulated_gamepad_ids {
             machine
-                .components
-                .get(&component_id)
+                .component_store
+                .get(component_id)
                 .unwrap()
                 .as_input
                 .as_ref()
@@ -367,16 +366,15 @@ impl<C: Component> ComponentBuilder<C> {
     }
 
     fn build(mut self) -> MachineBuilder {
-        self.machine.components.insert(
-            self.id,
-            ComponentTable {
-                component: self.component.expect("Component did not initialize itself"),
-                as_schedulable: self.as_schedulable,
-                as_display: self.as_display,
-                as_input: self.as_input,
-                as_memory: self.as_memory,
-            },
-        );
+        assert!(self.machine.component_store.0.len() == self.id.0 as usize);
+
+        self.machine.component_store.0.push(ComponentTable {
+            component: self.component.expect("Component did not initialize itself"),
+            as_schedulable: self.as_schedulable,
+            as_display: self.as_display,
+            as_input: self.as_input,
+            as_memory: self.as_memory,
+        });
 
         self.machine
     }

@@ -19,11 +19,6 @@
                     "kind": "bin"
                 }
             },
-            "args": [
-                "rom",
-                "run",
-                "roms/Other - Chip8/chipquarium.ch8"
-            ],
             "cwd": "${workspaceFolder}"
         },
         {

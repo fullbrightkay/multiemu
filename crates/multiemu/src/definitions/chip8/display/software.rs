@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex};
 use super::{draw_sprite_common, Chip8DisplayImplementation};
 use crate::runtime::rendering_backend::DisplayComponentFramebuffer;
 use nalgebra::{DMatrix, Point2};
 use palette::Srgba;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
 pub struct SoftwareState {

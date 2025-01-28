@@ -13,7 +13,7 @@ use crate::{
     runtime::rendering_backend::RenderingBackendState,
 };
 use indexmap::IndexMap;
-use std::{fs::File, sync::Arc};
+use std::{fs::File, sync::Arc, time::{Duration, Instant}};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -103,6 +103,7 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> ApplicationHandl
                 }
 
                 self.menu.active = false;
+
                 self.machine_context = Some(MachineContext::Running(machine));
             }
             Some(MachineContext::Running(_)) => {
@@ -271,8 +272,29 @@ impl<RS: RenderingBackendState<DisplayApiHandle = Arc<Window>>> ApplicationHandl
                         .runtime_state
                         .redraw_menu(&self.menu.egui_context, full_output);
                 } else if let Some(MachineContext::Running(machine)) = &mut self.machine_context {
+                    let now = Instant::now();
+                    
+                    self.timing_tracker.frame_rendering_starting();
                     machine.run();
                     window_context.runtime_state.redraw(machine);
+                    self.timing_tracker.frame_rendering_ending();
+
+                    let total_time_taken = Instant::now() - now;
+                    let average_timings = self.timing_tracker.average_frame_timings();
+                    
+                    if total_time_taken > average_timings {
+                        machine.scheduler.too_slow();
+                    } 
+
+                    if total_time_taken < average_timings {
+                        machine.scheduler.too_fast();
+                    }
+
+                    tracing::debug!(
+                        "Average framerate is {}",
+                        Duration::from_secs(1).as_secs_f32() / average_timings.as_secs_f32()
+                    );
+
                     window_context.window.request_redraw();
                 } else {
                     tracing::warn!("Machine not running when redraw requested");
